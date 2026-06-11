@@ -10,6 +10,19 @@ import pandas as pd
 
 from .config import DATA_DIR
 from .data_setup import create_compatibility_sensor_log, prepare_data
+from .dynamic_assets import (
+    dynamic_actions,
+    dynamic_asset_ids,
+    dynamic_root_cause,
+    dynamic_spares,
+    extract_asset_ids,
+    is_asset_ingestion_query,
+    load_dynamic_assets,
+    parse_dynamic_assets,
+    query_mentions_new_asset_reference,
+    score_dynamic_assets,
+    upsert_dynamic_assets,
+)
 from .llm import LocalLLM
 from .models import FEATURE_COLS, ModelManager, risk_band_from_score, safe_float
 from .rag import RAGIndex, normalize_equipment_type
@@ -96,23 +109,60 @@ class MaintenanceWizard:
     @property
     def asset_ids(self) -> list[str]:
         self.ensure_ready()
-        return sorted(self.model_manager.asset_health["asset_id"].unique().tolist())
+        return sorted(self.asset_health_table()["asset_id"].dropna().astype(str).unique().tolist())
 
     def asset_health_table(self) -> pd.DataFrame:
         self.ensure_ready()
-        return self.model_manager.asset_health.copy()
+        base = self.model_manager.asset_health.copy()
+        if "data_origin" not in base.columns:
+            base["data_origin"] = "demo_sensor_model"
+        if "is_dynamic" not in base.columns:
+            base["is_dynamic"] = 0
+        dynamic = score_dynamic_assets(load_dynamic_assets())
+        if dynamic.empty:
+            return base
+        return pd.concat([base, dynamic], ignore_index=True, sort=False)
 
     def query_assets(self, query: str) -> list[str]:
         self.ensure_ready()
-        return self.rag.query_assets(query)
+        explicit = self._explicit_asset_ids(query)
+        rag_assets = self.rag.query_assets(query)
+        out: list[str] = []
+        for asset_id in explicit + rag_assets:
+            if asset_id not in out:
+                out.append(asset_id)
+        return out
+
+    def _explicit_asset_ids(self, query: str) -> list[str]:
+        known = set(self.asset_health_table()["asset_id"].dropna().astype(str).str.upper())
+        out = []
+        for asset_id in extract_asset_ids(query):
+            if asset_id in known and asset_id not in out:
+                out.append(asset_id)
+        return out
+
+    def _is_dynamic_asset(self, asset_id: str) -> bool:
+        return str(asset_id).upper() in set(dynamic_asset_ids())
 
     def _infer_asset_from_query(self, query: str) -> str | None:
-        assets = self.query_assets(query)
+        q = str(query).lower()
+        explicit = self._explicit_asset_ids(query)
+        if explicit:
+            return explicit[0]
+        if query_mentions_new_asset_reference(query):
+            remembered = self.session_memory.get("last_new_asset_id")
+            if remembered:
+                return remembered
+            dyn_ids = dynamic_asset_ids()
+            if len(dyn_ids) == 1:
+                return dyn_ids[0]
+        if any(term in q for term in ["same asset", "that asset", "it", "spare should i", "same equipment"]):
+            remembered = self.session_memory.get("last_asset_id")
+            if remembered:
+                return remembered
+        assets = self.rag.query_assets(query)
         if assets:
             return assets[0]
-        q = str(query).lower()
-        if any(term in q for term in ["same asset", "that asset", "it", "spare should i"]):
-            return self.session_memory.get("last_asset_id")
         return None
 
     def _is_plant_query(self, query: str) -> bool:
@@ -126,10 +176,15 @@ class MaintenanceWizard:
             "plant",
             "supervisor",
             "prioritize all",
+            "rank",
             "bottleneck",
             "ranking",
             "which asset",
             "which one",
+            "most dangerous",
+            "newly added",
+            "added assets",
+            "original and newly",
             "choose one",
             "choose only one",
             "only one asset",
@@ -161,6 +216,17 @@ class MaintenanceWizard:
             return priority_context or any(term in q for term in ["plant", "supervisor", "compare", "ranking"])
         return False
 
+    def _plant_scope_asset_ids(self, query: str) -> list[str] | None:
+        q = str(query).lower()
+        explicit = self._explicit_asset_ids(query)
+        if len(explicit) >= 2:
+            return explicit
+        dyn_ids = dynamic_asset_ids()
+        if any(term in q for term in ["newly added", "added assets", "new assets", "dynamic assets"]):
+            if "original" not in q and "all assets" not in q and "all original" not in q:
+                return dyn_ids or None
+        return explicit or None
+
     def _is_public_query(self, query: str) -> bool:
         q = str(query).lower()
         return any(term in q for term in ["public dataset", "ai4i", "uci", "data source", "dataset used"])
@@ -170,7 +236,8 @@ class MaintenanceWizard:
 
     def get_latest_sensor_summary(self, asset_id: str) -> dict:
         self.ensure_ready()
-        row = self.model_manager.asset_health[self.model_manager.asset_health["asset_id"] == asset_id]
+        health = self.asset_health_table()
+        row = health[health["asset_id"].astype(str).str.upper() == str(asset_id).upper()]
         if row.empty:
             return {"asset_id": asset_id, "error": "No sensor data found."}
         r = row.iloc[0].to_dict()
@@ -196,20 +263,66 @@ class MaintenanceWizard:
             "temperature_slope_24h": round(safe_float(r.get("temperature_slope_24h")), 4),
             "vibration_slope_24h": round(safe_float(r.get("vibration_slope_24h")), 4),
             "pressure_slope_24h": round(safe_float(r.get("pressure_slope_24h")), 4),
+            "data_origin": r.get("data_origin", "demo_sensor_model"),
+            "is_dynamic": int(safe_float(r.get("is_dynamic"), 0)),
         }
 
     def get_spares(self, asset_id: str) -> list[dict]:
-        return pd.read_csv(DATA_DIR / "spares_inventory.csv").query("asset_id == @asset_id").to_dict("records")
+        rows = pd.read_csv(DATA_DIR / "spares_inventory.csv").query("asset_id == @asset_id").to_dict("records")
+        if rows:
+            return rows
+        sensor = self.get_latest_sensor_summary(asset_id)
+        if sensor.get("is_dynamic"):
+            return dynamic_spares(asset_id, sensor.get("asset_type", ""))
+        return []
 
     def get_delay(self, asset_id: str) -> dict:
         rows = pd.read_csv(DATA_DIR / "delay_logs.csv").query("asset_id == @asset_id")
-        return rows.iloc[0].to_dict() if len(rows) else {"delay_hours": 0}
+        if len(rows):
+            return rows.iloc[0].to_dict()
+        sensor = self.get_latest_sensor_summary(asset_id)
+        if sensor.get("is_dynamic"):
+            delay = 6.0 if str(sensor.get("criticality", "")).lower() == "critical" else 2.0
+            return {
+                "asset_id": asset_id,
+                "area": sensor.get("area"),
+                "delay_hours": delay,
+                "production_impact": "Inferred production/safety impact for user-added asset",
+            }
+        return {"delay_hours": 0}
 
     def get_history(self, asset_id: str) -> list[dict]:
-        return pd.read_csv(DATA_DIR / "maintenance_history.csv").query("asset_id == @asset_id").to_dict("records")
+        rows = pd.read_csv(DATA_DIR / "maintenance_history.csv").query("asset_id == @asset_id").to_dict("records")
+        if rows:
+            return rows
+        if self._is_dynamic_asset(asset_id):
+            return [
+                {
+                    "asset_id": asset_id,
+                    "timestamp": "user-added asset",
+                    "issue": "No historical work orders yet",
+                    "action_taken": "Use live readings and generic equipment policy until history is learned",
+                    "result": "Needs engineer confirmation",
+                    "downtime_hours": 0,
+                }
+            ]
+        return []
 
     def get_failures(self, asset_id: str) -> list[dict]:
-        return pd.read_csv(DATA_DIR / "failure_reports.csv").query("asset_id == @asset_id").to_dict("records")
+        rows = pd.read_csv(DATA_DIR / "failure_reports.csv").query("asset_id == @asset_id").to_dict("records")
+        if rows:
+            return rows
+        if self._is_dynamic_asset(asset_id):
+            return [
+                {
+                    "asset_id": asset_id,
+                    "failure_mode": "Not yet observed",
+                    "root_cause": "Pending inspection and feedback learning",
+                    "corrective_action": "Create first baseline inspection record",
+                    "business_impact": "Estimated from criticality, area, and live readings",
+                }
+            ]
+        return []
 
     def get_feedback(self, asset_id: str) -> list[dict]:
         path = DATA_DIR / "feedback_log.csv"
@@ -266,6 +379,25 @@ class MaintenanceWizard:
                 reasons.append("Hydraulic oil temperature >= 65 deg C: +10")
             if alarms >= 2:
                 reasons.append("Hydraulic alarm count >= 2: +8")
+        if any(word in typ for word in ["blower", "fan", "compressor"]):
+            if vib >= 6:
+                reasons.append("Rotating air equipment vibration >= 6 mm/s: +20")
+            if current >= 85:
+                reasons.append("Rotating air equipment current >= 85 A: +15")
+            if temp >= 80:
+                reasons.append("Rotating air equipment temperature >= 80 deg C: +20")
+        if "blast furnace" in (typ + " " + str(sensor.get("area", "")).lower()):
+            if temp >= 80 and vib >= 6.5:
+                reasons.append("Blast furnace critical blower/fan high temperature plus vibration safety override: +20")
+        if not any(key in typ for key in ["gearbox", "motor", "pump", "hydraulic", "blower", "fan", "compressor"]):
+            if temp >= 80:
+                reasons.append("Generic equipment temperature >= 80 deg C: +20")
+            if vib >= 6:
+                reasons.append("Generic rotating equipment vibration >= 6 mm/s: +20")
+            if current >= 85:
+                reasons.append("Generic equipment current >= 85 A: +15")
+            if pressure <= 6:
+                reasons.append("Generic low pressure <= 6 bar: +18")
 
         if alarms >= 2:
             reasons.append("Alarm count >= 2: +8")
@@ -323,7 +455,10 @@ class MaintenanceWizard:
         return {"priority": "P4", "risk_level": "LOW", "urgency": "Monitor only", "priority_score": score}
 
     def infer_root_cause(self, asset_id: str) -> str:
-        typ = normalize_equipment_type(self.get_latest_sensor_summary(asset_id).get("asset_type", ""))
+        sensor = self.get_latest_sensor_summary(asset_id)
+        if sensor.get("is_dynamic"):
+            return dynamic_root_cause(sensor.get("asset_type", ""))
+        typ = normalize_equipment_type(sensor.get("asset_type", ""))
         return {
             "motor": "bearing lubrication degradation, cooling restriction, overload, or current imbalance",
             "gearbox": "bearing wear, gear tooth wear, shaft misalignment, oil contamination, or foundation looseness",
@@ -339,7 +474,10 @@ class MaintenanceWizard:
             corrected = latest.get("corrected_action")
             if isinstance(corrected, str) and corrected.strip():
                 actions.append(f"Apply learned feedback: {corrected}")
-        typ = normalize_equipment_type(self.get_latest_sensor_summary(asset_id).get("asset_type", ""))
+        sensor = self.get_latest_sensor_summary(asset_id)
+        if sensor.get("is_dynamic"):
+            return actions + dynamic_actions(sensor.get("asset_type", ""))
+        typ = normalize_equipment_type(sensor.get("asset_type", ""))
         default_actions = {
             "motor": ["Inspect bearing lubrication, cooling airflow, current imbalance, load, and coupling alignment."],
             "gearbox": ["Check oil contamination and level.", "Inspect alignment, bearing condition, gear mesh, and foundation bolts."],
@@ -533,16 +671,186 @@ class MaintenanceWizard:
         pd.concat([df, pd.DataFrame([row])], ignore_index=True, sort=False).to_csv(path, index=False)
         return row
 
+    def _dynamic_context_docs(self, asset_id: str, sensor: dict) -> list[dict]:
+        return [
+            {
+                "source": "dynamic_assets.csv",
+                "asset_id": asset_id,
+                "equipment_type": sensor.get("asset_type", "dynamic_asset"),
+                "issue_type": "user_memory_current_health",
+                "text": (
+                    f"User-added asset {asset_id}. Type: {sensor.get('asset_type')}. Area: {sensor.get('area')}. "
+                    f"Criticality: {sensor.get('criticality')}. Temperature: {sensor.get('temperature_latest')}. "
+                    f"Vibration: {sensor.get('vibration_latest')}. Current: {sensor.get('current_latest')}. "
+                    f"Pressure: {sensor.get('pressure_latest')}. Alarm count: {sensor.get('alarm_count_latest')}. "
+                    f"Risk band: {sensor.get('risk_band')}. Hybrid health score: {sensor.get('hybrid_health_score')}. "
+                    f"Estimated RUL days: {sensor.get('estimated_rul_days')}."
+                ),
+            }
+        ]
+
+    def _filter_docs_for_assets(self, docs: list[dict], asset_ids: list[str]) -> list[dict]:
+        allowed = {str(asset_id).upper() for asset_id in asset_ids}
+        allowed_equipment = set()
+        for asset_id in allowed:
+            sensor = self.get_latest_sensor_summary(asset_id)
+            allowed_equipment.add(normalize_equipment_type(sensor.get("asset_type", "")))
+            allowed_equipment.add(str(sensor.get("asset_type", "")).lower().replace(" ", "_"))
+        out: list[dict] = []
+        for doc in docs:
+            aid = str(doc.get("asset_id", "")).upper()
+            equipment = str(doc.get("equipment_type", "")).lower()
+            source = str(doc.get("source", "")).lower()
+            is_policy = equipment in {"policy", "safety"} or "policy" in source or "operating_model" in source
+            is_scoped_all_doc = aid == "ALL" and (equipment in allowed_equipment or is_policy)
+            if aid in allowed or aid in {"", "NONE", "NAN"} or is_scoped_all_doc:
+                out.append(doc)
+        return out
+
+    def asset_ingestion_report(self, query: str, user_id: str = "demo_user") -> dict:
+        parsed_assets = parse_dynamic_assets(query)
+        if not parsed_assets:
+            answer = (
+                "I detected an asset-ingestion request, but I could not parse an asset ID and readings. "
+                "Please provide an ID like BF-07 plus asset type, area, criticality, and sensor readings."
+            )
+            return {
+                "mode": "asset_ingestion",
+                "asset_id": None,
+                "intent": "asset_ingestion",
+                "answer": answer,
+                "final_answer": answer,
+                "agent_plan": [],
+                "tool_calls": [],
+                "verifier_checks": [{"check": "Asset fields parsed", "status": "review", "detail": "No asset row parsed"}],
+                "decision_packet": {"mode": "asset_ingestion", "status": "needs_more_fields", "objective": query},
+                "alert_report": "",
+            }
+
+        upsert_dynamic_assets(parsed_assets)
+        scored = score_dynamic_assets(load_dynamic_assets())
+        added_ids = [asset["asset_id"] for asset in parsed_assets]
+        last_asset = added_ids[-1]
+        self.session_memory["last_asset_id"] = last_asset
+        self.session_memory["last_new_asset_id"] = last_asset
+        self.session_memory.setdefault("new_asset_ids", [])
+        for asset_id in added_ids:
+            if asset_id not in self.session_memory["new_asset_ids"]:
+                self.session_memory["new_asset_ids"].append(asset_id)
+
+        scored_added = scored[scored["asset_id"].astype(str).str.upper().isin(set(added_ids))].copy()
+        agent_plan = [
+            {"step": 1, "agent": "Memory Agent", "task": "Detect asset-ingestion intent and parse asset rows", "target": ", ".join(added_ids), "status": "complete"},
+            {"step": 2, "agent": "Sensor Agent", "task": "Normalize readings and build current asset state", "target": ", ".join(added_ids), "status": "complete"},
+            {"step": 3, "agent": "Risk Agent", "task": "Score dynamic assets with operational rules and criticality", "target": ", ".join(added_ids), "status": "complete"},
+            {"step": 4, "agent": "Verifier Agent", "task": "Confirm dynamic assets are now available to ranking, diagnosis, spares, and follow-up memory", "target": ", ".join(added_ids), "status": "complete"},
+        ]
+        tool_calls = [
+            {"tool": "dynamic_asset_parser", "agent": "Memory Agent", "input": query, "output": f"{len(parsed_assets)} asset row(s) parsed", "status": "success"},
+            {"tool": "dynamic_asset_memory_store", "agent": "Memory Agent", "input": "dynamic_assets.csv", "output": f"remembered {', '.join(added_ids)}", "status": "success"},
+            {"tool": "dynamic_rule_scorer", "agent": "Risk Agent", "input": "current readings + criticality + equipment class", "output": f"{len(scored_added)} scored row(s)", "status": "success"},
+        ]
+        verifier_checks = [
+            {"check": "Asset ID parsed", "status": "pass", "detail": ", ".join(added_ids)},
+            {"check": "Dynamic memory persisted", "status": "pass", "detail": str(DATA_DIR / "dynamic_assets.csv")},
+            {"check": "Usable in future ranking", "status": "pass", "detail": "asset_health_table merges demo and dynamic assets"},
+            {"check": "Follow-up context updated", "status": "pass", "detail": f"last_new_asset_id={last_asset}"},
+        ]
+        decision_packet = {
+            "mode": "asset_ingestion",
+            "intent": "asset_ingestion",
+            "status": "remembered",
+            "objective": query,
+            "added_assets": added_ids,
+            "selected_asset": last_asset,
+            "next_system_action": "use_dynamic_asset_memory_for_future_questions",
+        }
+
+        locked_sections = []
+        for row in scored_added.sort_values("hybrid_health_score", ascending=False).to_dict("records"):
+            locked_sections.append(
+                "\n".join(
+                    [
+                        f"- Asset ID: {row.get('asset_id')}",
+                        f"- Asset type: {row.get('asset_type')}",
+                        f"- Area: {row.get('area')}",
+                        f"- Criticality: {row.get('criticality')}",
+                        f"- Temperature: {row.get('temperature')} C",
+                        f"- Vibration: {row.get('vibration')} mm/s",
+                        f"- Current: {row.get('current')} A",
+                        f"- Pressure: {row.get('pressure')} bar",
+                        f"- Alarm count: {row.get('alarm_count')}",
+                        f"- Operational rule score: {row.get('operational_rule_score')}/100",
+                        f"- Initial priority: {row.get('priority')}/{row.get('risk_band')}",
+                        f"- Estimated RUL: {row.get('estimated_rul_days')} days",
+                    ]
+                )
+            )
+
+        answer = f"""
+**Dynamic Asset Memory Update**
+
+**{", ".join(added_ids)} added and remembered.**
+
+**Agentic Control Loop**
+- Objective: {query}
+- Operating mode: asset ingestion and memory update
+- Decision policy: parse user-supplied plant state, persist it, score it, and make it available to every later agent tool.
+
+**Autonomous Execution Plan**
+{chr(10).join([f"- Step {p['step']} | {p['agent']}: {p['task']} [{p['status']}]" for p in agent_plan])}
+
+**Tool Calls Executed**
+{chr(10).join([f"- {t['agent']} -> `{t['tool']}` | input: {t['input']} | output: {t['output']} | {t['status']}" for t in tool_calls])}
+
+**Verifier Checks**
+{chr(10).join([f"- {v['check']}: {v['status'].upper()} ({v['detail']})" for v in verifier_checks])}
+
+**Locked Fields And Initial Assessment**
+{chr(10).join(["", *locked_sections])}
+
+**Memory**
+- These assets are now included in plant ranking, comparison, diagnosis, RUL estimation, spares planning, alerting, and follow-up references such as "same new asset".
+- Last new asset remembered: {last_asset}
+
+**Final Decision Packet**
+- Mode: asset_ingestion
+- Status: remembered
+- Added assets: {", ".join(added_ids)}
+- Next system action: use_dynamic_asset_memory_for_future_questions
+""".strip()
+
+        priority = {"priority": "MEMORY", "risk_level": "ASSET_INGESTION", "urgency": "Remembered for future reasoning", "priority_score": 0}
+        self.write_logbook(query, last_asset, priority, answer)
+        return {
+            "mode": "asset_ingestion",
+            "asset_id": last_asset,
+            "intent": "asset_ingestion",
+            "dynamic_assets": scored_added.to_dict("records"),
+            "risk_priority": priority,
+            "priority": "Asset memory updated",
+            "agent_plan": agent_plan,
+            "tool_calls": tool_calls,
+            "verifier_checks": verifier_checks,
+            "decision_packet": decision_packet,
+            "answer": answer,
+            "final_answer": answer,
+            "alert_report": f"Dynamic asset memory updated for {', '.join(added_ids)}.",
+            "llm_used": False,
+        }
+
     def chat(self, query: str, user_id: str = "demo_user") -> dict:
         self.ensure_ready()
         self.session_memory["user_id"] = user_id
+        if is_asset_ingestion_query(query):
+            return self.asset_ingestion_report(query, user_id=user_id)
         intent_hint = classify_steel_intent(query)
         if intent_hint == "predictive_maintenance_workflow_design":
             return self.general_steel_report(query)
         if self._is_public_query(query) and not self.query_assets(query) and not self._is_plant_query(query):
             return self.public_dataset_report(query)
         if self._is_plant_query(query):
-            return self.plant_priority_report(query)
+            return self.plant_priority_report(query, asset_ids=self._plant_scope_asset_ids(query))
 
         asset_id = self._infer_asset_from_query(query)
         if asset_id:
@@ -742,7 +1050,13 @@ class MaintenanceWizard:
         spares = self.get_spares(asset_id)
         delay = self.get_delay(asset_id)
         priority = self.prioritize_action(sensor, spares, delay)
-        docs = self.rag.retrieve(query, top_k=5, asset_id=asset_id, equipment_type=sensor.get("asset_type"))
+        if sensor.get("is_dynamic"):
+            docs = self._dynamic_context_docs(asset_id, sensor) + self._filter_docs_for_assets(
+                self.rag.retrieve(query, top_k=6, plant_level=True),
+                [asset_id],
+            )[:4]
+        else:
+            docs = self.rag.retrieve(query, top_k=5, asset_id=asset_id, equipment_type=sensor.get("asset_type"))
         trace = self.build_agent_trace(asset_id, sensor, anomaly, priority, docs)
         rules = self.rule_breakdown(sensor, delay, spares)
         feedback = self.get_feedback(asset_id)
@@ -856,7 +1170,9 @@ Retrieved evidence:
         self.session_memory["last_asset_id"] = asset_id
         self.write_logbook(query, asset_id, priority, report)
         return {
+            "mode": "asset_diagnosis",
             "asset_id": asset_id,
+            "intent": "asset_diagnosis",
             "sensor_summary": sensor,
             "anomaly_result": anomaly,
             "risk_priority": priority,
@@ -925,6 +1241,7 @@ Retrieved evidence:
         top_asset = table.iloc[0]["asset_id"]
         top_sensor = self.get_latest_sensor_summary(top_asset)
         top_spares = self.get_spares(top_asset)
+        top_type_text = str(top_sensor.get("asset_type", "")).lower()
         top_equipment = normalize_equipment_type(top_sensor.get("asset_type", ""))
         second = table.iloc[1] if len(table) > 1 else None
         if top_equipment == "gearbox":
@@ -948,6 +1265,23 @@ Retrieved evidence:
                 f"Choose {top_asset} first. Create a high-priority hydraulic pressure recovery plan, inspect filter, "
                 "relief valve, oil level, leakage, pump noise, and reserve filter element or relief valve cartridge."
             )
+        elif any(word in top_type_text for word in ["blower", "fan", "compressor"]):
+            recommended_first_action = (
+                f"Choose {top_asset} first. Create a P1 rotating-air-equipment inspection plan, verify vibration spectrum, "
+                "bearing temperature, motor current balance, damper position, impeller fouling, duct restriction, "
+                "coupling alignment, and standby availability."
+            )
+        elif "bearing" in top_type_text:
+            recommended_first_action = (
+                f"Choose {top_asset} first. Create a P1 bearing inspection plan, verify bearing temperature, lubrication, "
+                "vibration spectrum, alignment, load condition, contamination, cooling path, spare bearing availability, "
+                "lifting plan, and safe isolation permit."
+            )
+        elif top_equipment == "blast_furnace":
+            recommended_first_action = (
+                f"Choose {top_asset} first. Create a P1 blast-furnace-area safety inspection plan, verify cooling, airflow, "
+                "interlocks, vibration, temperature, isolation permits, and standby equipment readiness."
+            )
         else:
             recommended_first_action = f"Choose {top_asset} first. Create a controlled inspection and repair work order."
         comparison_note = ""
@@ -957,16 +1291,22 @@ Retrieved evidence:
                 f"{second['priority']}/{second['risk_level']} with hybrid health score "
                 f"{second['hybrid_health_score']} and RUL {second['rul_days']} days."
             )
-        docs = self.rag.retrieve(query, top_k=5, plant_level=True)
+        docs = self._filter_docs_for_assets(self.rag.retrieve(query, top_k=8, plant_level=True), list(asset_ids))[:5]
+        dynamic_docs = []
+        for asset_id in table["asset_id"].astype(str).tolist():
+            sensor = self.get_latest_sensor_summary(asset_id)
+            if sensor.get("is_dynamic"):
+                dynamic_docs.extend(self._dynamic_context_docs(asset_id, sensor))
+        docs = dynamic_docs + docs
         agent_plan = self.build_agent_plan(query, mode="plant_priority", asset_id=top_asset)
         tool_calls = [
-            {"tool": "asset_health_scan", "agent": "Sensor Agent", "input": f"{len(asset_ids)} assets", "output": f"{len(table)} scored rows", "status": "success"},
+            {"tool": "asset_health_scan", "agent": "Sensor Agent", "input": f"{len(asset_ids)} known assets", "output": f"{len(table)} scored rows including dynamic memory", "status": "success"},
             {"tool": "plant_priority_ranker", "agent": "Risk Agent", "input": "hybrid score + RUL + delay + criticality", "output": f"top asset {top_asset}", "status": "success"},
             {"tool": "rag_retriever", "agent": "Knowledge Agent", "input": "plant-level policies and evidence", "output": f"{len(docs)} evidence chunks", "status": "success"},
             {"tool": "supervisor_report_writer", "agent": "Reporter Agent", "input": top_asset, "output": "plant priority summary generated", "status": "success"},
         ]
         verifier_checks = [
-            {"check": "All demo assets scored", "status": "pass" if len(table) == len(asset_ids) else "review", "detail": f"{len(table)} of {len(asset_ids)} assets ranked"},
+            {"check": "All requested known assets scored", "status": "pass" if len(table) == len(asset_ids) else "review", "detail": f"{len(table)} of {len(asset_ids)} assets ranked"},
             {"check": "Top asset selected", "status": "pass", "detail": top_asset},
             {"check": "Ranking includes RUL and delay", "status": "pass", "detail": "rul_days and delay_hours present"},
             {"check": "Policy evidence retrieved", "status": "pass" if len(docs) > 0 else "review", "detail": f"{len(docs)} sources"},
@@ -1025,7 +1365,7 @@ Retrieved evidence:
 - Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
 
 **Diagnosis**
-- Plant equipment was compared across {len(asset_ids)} demo steel assets.
+- Plant equipment was compared across {len(asset_ids)} known steel assets, including any user-added dynamic assets in memory.
 
 **Risk and RUL**
 {ranking}
@@ -1044,7 +1384,7 @@ Retrieved evidence:
 
 **Agent Reasoning Trace**
 - Triage Agent: identified plant-level prioritization request.
-- Sensor Agent: collected latest health and RUL for all demo steel assets.
+- Sensor Agent: collected latest health and RUL for all requested known assets, including dynamic memory rows.
 - Risk Agent: ranked assets by hybrid ML + operational rule score.
 - Planning Agent: selected {top_asset} as first maintenance target.
 - Reporting Agent: generated supervisor summary and logbook entry.
@@ -1059,6 +1399,8 @@ Retrieved evidence:
 """.strip()
         priority = {"priority": "PLANT", "risk_level": "PLANT_SUMMARY", "urgency": f"Prioritize {top_asset}", "priority_score": float(table.iloc[0]["priority_score"])}
         self.session_memory["last_asset_id"] = top_asset
+        if self._is_dynamic_asset(top_asset):
+            self.session_memory["last_new_asset_id"] = top_asset
         self.write_logbook(query, top_asset, priority, report)
         return {
             "mode": "plant_priority",

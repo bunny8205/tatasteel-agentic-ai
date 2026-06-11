@@ -186,10 +186,26 @@ def render_workspace(result: dict | None) -> None:
 
 def run_prompt(prompt: str) -> None:
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.spinner("Agent is planning, retrieving, verifying, and writing..."):
-        result = wizard.chat(prompt, user_id="maintenance_engineer_01")
+    try:
+        with st.spinner("Agent is planning, retrieving, verifying, and writing..."):
+            result = wizard.chat(prompt, user_id="maintenance_engineer_01")
+    except Exception as exc:
+        result = {
+            "answer": "The agent hit an error while processing this prompt.",
+            "decision_packet": {"mode": "error", "objective": prompt, "error": str(exc)},
+            "agent_plan": [],
+            "tool_calls": [],
+            "verifier_checks": [],
+        }
+        st.session_state.last_result = result
+        st.session_state.messages.append({"role": "assistant", "content": result["answer"]})
+        st.error("Prompt execution failed.")
+        st.exception(exc)
+        return
+
+    answer = result.get("answer", "").strip() or "The agent completed but returned an empty answer."
     st.session_state.last_result = result
-    st.session_state.messages.append({"role": "assistant", "content": result.get("answer", "")})
+    st.session_state.messages.append({"role": "assistant", "content": answer})
 
 
 init_state()
@@ -205,6 +221,9 @@ for message in st.session_state.messages:
 
 if prompt := st.chat_input("Ask the steel agent"):
     run_prompt(prompt)
-    st.rerun()
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    with st.chat_message("assistant"):
+        st.markdown(st.session_state.messages[-1]["content"])
 
 render_workspace(st.session_state.last_result)

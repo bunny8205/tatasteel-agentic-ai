@@ -1,7 +1,11 @@
-"""Streamlit Cloud entrypoint.
+"""Standalone app entrypoint.
 
 Run locally:
-    streamlit run app.py
+    python app.py --port 8600
 """
 
-from frontend.streamlit_app import *  # noqa: F401,F403
+from web_app import main
+
+
+if __name__ == "__main__":
+    main()

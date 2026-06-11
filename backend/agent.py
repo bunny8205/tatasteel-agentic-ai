@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -17,10 +18,14 @@ from .dynamic_assets import (
     dynamic_spares,
     extract_asset_ids,
     is_asset_ingestion_query,
+    is_asset_update_query,
+    is_priority_change_query,
+    latest_dynamic_asset_change,
     load_dynamic_assets,
     parse_dynamic_assets,
     query_mentions_new_asset_reference,
     score_dynamic_assets,
+    update_dynamic_assets_from_query,
     upsert_dynamic_assets,
 )
 from .llm import LocalLLM
@@ -65,6 +70,26 @@ def _format_sources(docs: list[dict]) -> str:
         text = " ".join(str(doc.get("text", "")).split())[:320]
         lines.append(f"{len(lines) + 1}. {source} - {equipment}/{issue}\n   Evidence: {text}")
     return "\n".join(lines)
+
+
+def _is_missing_value(value) -> bool:
+    if value is None:
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def _display_value(value, unit: str = "", decimals: int = 2) -> str:
+    if _is_missing_value(value):
+        return "not provided"
+    try:
+        number = float(value)
+        rendered = f"{number:.{decimals}f}".rstrip("0").rstrip(".")
+        return f"{rendered}{unit}"
+    except (TypeError, ValueError):
+        return f"{value}{unit}" if unit else str(value)
 
 
 def _spares_strategy(spares: list[dict]) -> str:
@@ -222,6 +247,20 @@ class MaintenanceWizard:
         if len(explicit) >= 2:
             return explicit
         dyn_ids = dynamic_asset_ids()
+        dynamic_only_terms = [
+            "only newly added",
+            "rank only newly",
+            "newly added assets only",
+            "dynamic assets only",
+            "only dynamic",
+            "not original",
+            "not the original",
+            "not original demo",
+            "exclude original",
+            "exclude demo",
+        ]
+        if any(term in q for term in dynamic_only_terms):
+            return dyn_ids or None
         if any(term in q for term in ["newly added", "added assets", "new assets", "dynamic assets"]):
             if "original" not in q and "all assets" not in q and "all original" not in q:
                 return dyn_ids or None
@@ -241,16 +280,24 @@ class MaintenanceWizard:
         if row.empty:
             return {"asset_id": asset_id, "error": "No sensor data found."}
         r = row.iloc[0].to_dict()
+        is_dynamic = int(safe_float(r.get("is_dynamic"), 0)) == 1
+
+        def latest_value(field: str, default: float = 0):
+            value = r.get(field)
+            if is_dynamic and _is_missing_value(value):
+                return None
+            return round(safe_float(value, default), 2)
+
         return {
             "asset_id": asset_id,
             "asset_type": r.get("asset_type"),
             "area": r.get("area"),
             "criticality": r.get("criticality"),
-            "temperature_latest": round(safe_float(r.get("temperature")), 2),
-            "vibration_latest": round(safe_float(r.get("vibration")), 2),
-            "current_latest": round(safe_float(r.get("current")), 2),
-            "pressure_latest": round(safe_float(r.get("pressure")), 2),
-            "rpm_latest": round(safe_float(r.get("rpm")), 2),
+            "temperature_latest": latest_value("temperature"),
+            "vibration_latest": latest_value("vibration"),
+            "current_latest": latest_value("current"),
+            "pressure_latest": latest_value("pressure"),
+            "rpm_latest": latest_value("rpm", 1480),
             "alarm_count_latest": int(safe_float(r.get("alarm_count"))),
             "ml_failure_risk_latest": round(safe_float(r.get("ml_failure_risk")), 4),
             "operational_rule_score": round(safe_float(r.get("operational_rule_score")), 2),
@@ -264,7 +311,9 @@ class MaintenanceWizard:
             "vibration_slope_24h": round(safe_float(r.get("vibration_slope_24h")), 4),
             "pressure_slope_24h": round(safe_float(r.get("pressure_slope_24h")), 4),
             "data_origin": r.get("data_origin", "demo_sensor_model"),
-            "is_dynamic": int(safe_float(r.get("is_dynamic"), 0)),
+            "is_dynamic": int(is_dynamic),
+            "missing_readings": r.get("missing_readings", ""),
+            "provisional_scoring_note": r.get("provisional_scoring_note", ""),
         }
 
     def get_spares(self, asset_id: str) -> list[dict]:
@@ -543,7 +592,11 @@ class MaintenanceWizard:
                 "tool": "sensor_health_reader",
                 "agent": "Sensor Agent",
                 "input": asset_id,
-                "output": f"temp={sensor.get('temperature_latest')}, vib={sensor.get('vibration_latest')}, pressure={sensor.get('pressure_latest')}",
+                "output": (
+                    f"temp={_display_value(sensor.get('temperature_latest'))}, "
+                    f"vib={_display_value(sensor.get('vibration_latest'))}, "
+                    f"pressure={_display_value(sensor.get('pressure_latest'))}"
+                ),
                 "status": "success",
             },
             {
@@ -672,6 +725,12 @@ class MaintenanceWizard:
         return row
 
     def _dynamic_context_docs(self, asset_id: str, sensor: dict) -> list[dict]:
+        missing = sensor.get("missing_readings") or ""
+        uncertainty = (
+            f" Missing readings: {missing}. Neutral defaults were used only for provisional risk scoring."
+            if missing
+            else ""
+        )
         return [
             {
                 "source": "dynamic_assets.csv",
@@ -680,11 +739,11 @@ class MaintenanceWizard:
                 "issue_type": "user_memory_current_health",
                 "text": (
                     f"User-added asset {asset_id}. Type: {sensor.get('asset_type')}. Area: {sensor.get('area')}. "
-                    f"Criticality: {sensor.get('criticality')}. Temperature: {sensor.get('temperature_latest')}. "
-                    f"Vibration: {sensor.get('vibration_latest')}. Current: {sensor.get('current_latest')}. "
-                    f"Pressure: {sensor.get('pressure_latest')}. Alarm count: {sensor.get('alarm_count_latest')}. "
+                    f"Criticality: {sensor.get('criticality')}. Temperature: {_display_value(sensor.get('temperature_latest'))}. "
+                    f"Vibration: {_display_value(sensor.get('vibration_latest'))}. Current: {_display_value(sensor.get('current_latest'))}. "
+                    f"Pressure: {_display_value(sensor.get('pressure_latest'))}. Alarm count: {sensor.get('alarm_count_latest')}. "
                     f"Risk band: {sensor.get('risk_band')}. Hybrid health score: {sensor.get('hybrid_health_score')}. "
-                    f"Estimated RUL days: {sensor.get('estimated_rul_days')}."
+                    f"Estimated RUL days: {sensor.get('estimated_rul_days')}.{uncertainty}"
                 ),
             }
         ]
@@ -752,7 +811,7 @@ class MaintenanceWizard:
         ]
         verifier_checks = [
             {"check": "Asset ID parsed", "status": "pass", "detail": ", ".join(added_ids)},
-            {"check": "Dynamic memory persisted", "status": "pass", "detail": str(DATA_DIR / "dynamic_assets.csv")},
+            {"check": "Dynamic memory persisted", "status": "pass", "detail": "dynamic_assets.csv"},
             {"check": "Usable in future ranking", "status": "pass", "detail": "asset_health_table merges demo and dynamic assets"},
             {"check": "Follow-up context updated", "status": "pass", "detail": f"last_new_asset_id={last_asset}"},
         ]
@@ -775,11 +834,13 @@ class MaintenanceWizard:
                         f"- Asset type: {row.get('asset_type')}",
                         f"- Area: {row.get('area')}",
                         f"- Criticality: {row.get('criticality')}",
-                        f"- Temperature: {row.get('temperature')} C",
-                        f"- Vibration: {row.get('vibration')} mm/s",
-                        f"- Current: {row.get('current')} A",
-                        f"- Pressure: {row.get('pressure')} bar",
+                        f"- Temperature: {_display_value(row.get('temperature'), ' C')}",
+                        f"- Vibration: {_display_value(row.get('vibration'), ' mm/s')}",
+                        f"- Current: {_display_value(row.get('current'), ' A')}",
+                        f"- Pressure: {_display_value(row.get('pressure'), ' bar')}",
                         f"- Alarm count: {row.get('alarm_count')}",
+                        f"- Missing readings: {row.get('missing_readings') or 'none'}",
+                        f"- Scoring note: {row.get('provisional_scoring_note') or 'all required readings provided'}",
                         f"- Operational rule score: {row.get('operational_rule_score')}/100",
                         f"- Initial priority: {row.get('priority')}/{row.get('risk_band')}",
                         f"- Estimated RUL: {row.get('estimated_rul_days')} days",
@@ -839,9 +900,260 @@ class MaintenanceWizard:
             "llm_used": False,
         }
 
+    def asset_update_report(self, query: str, user_id: str = "demo_user") -> dict:
+        result = update_dynamic_assets_from_query(query)
+        updated = result.get("updated", [])
+        missing = result.get("missing", [])
+        history_rows = result.get("history", [])
+
+        if not updated:
+            answer = (
+                "I detected an asset update request, but I could not apply it to dynamic memory. "
+                f"Missing or unknown assets: {', '.join(missing) if missing else 'none parsed'}."
+            )
+            return {
+                "mode": "asset_update",
+                "asset_id": None,
+                "intent": "asset_update",
+                "answer": answer,
+                "final_answer": answer,
+                "agent_plan": [],
+                "tool_calls": [],
+                "verifier_checks": [{"check": "Dynamic asset update applied", "status": "review", "detail": answer}],
+                "decision_packet": {"mode": "asset_update", "status": "not_applied", "objective": query},
+                "alert_report": "",
+            }
+
+        updated_ids = [row["asset_id"] for row in updated]
+        last_asset = updated_ids[-1]
+        self.session_memory["last_asset_id"] = last_asset
+        self.session_memory["last_new_asset_id"] = last_asset
+
+        comparisons = []
+        for row in history_rows:
+            previous = json.loads(row["previous_record"])
+            new = json.loads(row["new_record"])
+            changed_field_list = json.loads(row["changed_fields"])
+            changed_fields = ", ".join(changed_field_list)
+            priority_changed = (
+                previous.get("priority") != new.get("priority")
+                or previous.get("risk_band") != new.get("risk_band")
+            )
+            comparisons.append(
+                "\n".join(
+                    [
+                        f"- Asset ID: {new.get('asset_id')}",
+                        f"- Changed fields: {changed_fields}",
+                        f"- Previous priority: {previous.get('priority')}/{previous.get('risk_band')} | score {previous.get('hybrid_health_score')}",
+                        f"- New priority: {new.get('priority')}/{new.get('risk_band')} | score {new.get('hybrid_health_score')}",
+                        f"- Priority changed: {'YES' if priority_changed else 'NO'}",
+                        f"- Temperature: {_display_value(previous.get('temperature'), ' C')} -> {_display_value(new.get('temperature'), ' C')}",
+                        f"- Vibration: {_display_value(previous.get('vibration'), ' mm/s')} -> {_display_value(new.get('vibration'), ' mm/s')}",
+                        f"- Current: {_display_value(previous.get('current'), ' A')} -> {_display_value(new.get('current'), ' A')}",
+                        f"- Pressure: {_display_value(previous.get('pressure'), ' bar')} -> {_display_value(new.get('pressure'), ' bar')}",
+                        f"- Alarm count: {previous.get('alarm_count')} -> {new.get('alarm_count')}",
+                    ]
+                )
+            )
+
+        agent_plan = [
+            {"step": 1, "agent": "Memory Agent", "task": "Detect dynamic asset update intent", "target": ", ".join(updated_ids), "status": "complete"},
+            {"step": 2, "agent": "State Agent", "task": "Load previous dynamic asset row", "target": ", ".join(updated_ids), "status": "complete"},
+            {"step": 3, "agent": "Sensor Agent", "task": "Apply only the fields supplied by the user", "target": ", ".join(updated_ids), "status": "complete"},
+            {"step": 4, "agent": "Risk Agent", "task": "Re-score updated state and compare old versus new priority", "target": ", ".join(updated_ids), "status": "complete"},
+            {"step": 5, "agent": "Memory Agent", "task": "Write update event to dynamic_asset_history.csv", "target": ", ".join(updated_ids), "status": "complete"},
+        ]
+        tool_calls = [
+            {"tool": "dynamic_asset_update_parser", "agent": "Memory Agent", "input": query, "output": f"{len(updated)} asset update(s) parsed", "status": "success"},
+            {"tool": "dynamic_asset_state_store", "agent": "State Agent", "input": "dynamic_assets.csv", "output": f"updated {', '.join(updated_ids)}", "status": "success"},
+            {"tool": "dynamic_asset_history_writer", "agent": "Memory Agent", "input": "dynamic_asset_history.csv", "output": f"{len(history_rows)} update event(s) stored", "status": "success"},
+        ]
+        verifier_checks = [
+            {"check": "Update applied to existing asset", "status": "pass", "detail": ", ".join(updated_ids)},
+            {"check": "Previous version preserved", "status": "pass", "detail": "dynamic_asset_history.csv"},
+            {"check": "Future ranking uses latest state", "status": "pass", "detail": "asset_health_table reads updated dynamic memory"},
+        ]
+        selected = updated[-1]
+        priority = {
+            "priority": selected.get("priority"),
+            "risk_level": selected.get("risk_band"),
+            "urgency": selected.get("urgency"),
+            "priority_score": selected.get("hybrid_health_score"),
+        }
+        decision_packet = {
+            "mode": "asset_update",
+            "intent": "dynamic_asset_update",
+            "objective": query,
+            "updated_assets": updated_ids,
+            "selected_asset": last_asset,
+            "risk_level": priority.get("risk_level"),
+            "priority": priority.get("priority"),
+            "next_system_action": "use_latest_dynamic_asset_state_for_future_reasoning",
+        }
+
+        answer = f"""
+**Dynamic Asset Update Applied**
+
+**Updated assets:** {", ".join(updated_ids)}
+
+**What changed**
+{chr(10).join(["", *comparisons])}
+
+**Agentic Control Loop**
+- Objective: {query}
+- Operating mode: dynamic asset update and state comparison
+- Decision policy: preserve previous state, apply only supplied fields, re-score, then write update history.
+
+**Autonomous Execution Plan**
+{chr(10).join([f"- Step {p['step']} | {p['agent']}: {p['task']} [{p['status']}]" for p in agent_plan])}
+
+**Tool Calls Executed**
+{chr(10).join([f"- {t['agent']} -> `{t['tool']}` | input: {t['input']} | output: {t['output']} | {t['status']}" for t in tool_calls])}
+
+**Verifier Checks**
+{chr(10).join([f"- {v['check']}: {v['status'].upper()} ({v['detail']})" for v in verifier_checks])}
+
+**Memory**
+- The latest readings are now the active source of truth for diagnosis, ranking, spares, alerts, and follow-up questions.
+- The previous version is retained for "did priority change?" comparisons.
+
+**Final Decision Packet**
+- Mode: asset_update
+- Updated assets: {", ".join(updated_ids)}
+- Selected asset: {last_asset}
+- Next system action: use_latest_dynamic_asset_state_for_future_reasoning
+""".strip()
+
+        self.write_logbook(query, last_asset, priority, answer)
+        return {
+            "mode": "asset_update",
+            "asset_id": last_asset,
+            "intent": "dynamic_asset_update",
+            "updated_assets": updated,
+            "risk_priority": priority,
+            "priority": f"{priority.get('priority')}/{priority.get('risk_level')}",
+            "agent_plan": agent_plan,
+            "tool_calls": tool_calls,
+            "verifier_checks": verifier_checks,
+            "decision_packet": decision_packet,
+            "answer": answer,
+            "final_answer": answer,
+            "alert_report": f"Dynamic asset update applied for {', '.join(updated_ids)}.",
+            "llm_used": False,
+        }
+
+    def dynamic_priority_change_report(self, query: str, asset_id: str | None = None, user_id: str = "demo_user") -> dict:
+        target = asset_id or self._infer_asset_from_query(query) or self.session_memory.get("last_new_asset_id")
+        if not target:
+            answer = "I can compare priority after an update, but I need an asset ID or a remembered new asset."
+            return {
+                "mode": "asset_update_review",
+                "asset_id": None,
+                "intent": "priority_change_review",
+                "answer": answer,
+                "final_answer": answer,
+                "agent_plan": [],
+                "tool_calls": [],
+                "verifier_checks": [{"check": "Asset resolved for change review", "status": "review", "detail": "No asset ID available"}],
+                "decision_packet": {"mode": "asset_update_review", "status": "needs_asset_id", "objective": query},
+                "alert_report": "",
+            }
+
+        change = latest_dynamic_asset_change(target)
+        if not change:
+            answer = f"No update history is available yet for {target}. Add or update readings first, then ask again."
+            return {
+                "mode": "asset_update_review",
+                "asset_id": target,
+                "intent": "priority_change_review",
+                "answer": answer,
+                "final_answer": answer,
+                "agent_plan": [],
+                "tool_calls": [],
+                "verifier_checks": [{"check": "Update history found", "status": "review", "detail": "No update event found"}],
+                "decision_packet": {"mode": "asset_update_review", "status": "no_update_history", "selected_asset": target},
+                "alert_report": "",
+            }
+
+        previous = change.get("previous_record", {})
+        new = change.get("new_record", {})
+        changed_fields = change.get("changed_fields", [])
+        priority_changed = (
+            previous.get("priority") != new.get("priority")
+            or previous.get("risk_band") != new.get("risk_band")
+        )
+        answer = f"""
+**Priority Change Review For {target}**
+
+**Priority changed:** {"YES" if priority_changed else "NO"}
+
+**Before**
+- Priority: {previous.get("priority")}/{previous.get("risk_band")}
+- Score: {previous.get("hybrid_health_score")}/100
+- RUL: {previous.get("estimated_rul_days")} days
+
+**After**
+- Priority: {new.get("priority")}/{new.get("risk_band")}
+- Score: {new.get("hybrid_health_score")}/100
+- RUL: {new.get("estimated_rul_days")} days
+
+**Changed readings**
+- Fields: {", ".join(changed_fields)}
+- Temperature: {_display_value(previous.get("temperature"), " C")} -> {_display_value(new.get("temperature"), " C")}
+- Vibration: {_display_value(previous.get("vibration"), " mm/s")} -> {_display_value(new.get("vibration"), " mm/s")}
+- Current: {_display_value(previous.get("current"), " A")} -> {_display_value(new.get("current"), " A")}
+- Pressure: {_display_value(previous.get("pressure"), " bar")} -> {_display_value(new.get("pressure"), " bar")}
+- Alarm count: {previous.get("alarm_count")} -> {new.get("alarm_count")}
+
+**Reason**
+- The agent compared the previous stored dynamic state against the latest update event in memory.
+- Higher vibration, current, temperature, pressure deviation, alarm count, and criticality increase the operational rule score and may change priority.
+""".strip()
+        priority = {
+            "priority": new.get("priority"),
+            "risk_level": new.get("risk_band"),
+            "urgency": new.get("urgency", "Review update"),
+            "priority_score": new.get("hybrid_health_score"),
+        }
+        decision_packet = {
+            "mode": "asset_update_review",
+            "intent": "priority_change_review",
+            "selected_asset": target,
+            "priority_changed": priority_changed,
+            "previous_priority": f"{previous.get('priority')}/{previous.get('risk_band')}",
+            "new_priority": f"{new.get('priority')}/{new.get('risk_band')}",
+            "changed_fields": changed_fields,
+            "next_system_action": "continue_with_latest_dynamic_asset_state",
+        }
+        return {
+            "mode": "asset_update_review",
+            "asset_id": target,
+            "intent": "priority_change_review",
+            "risk_priority": priority,
+            "priority": f"{priority.get('priority')}/{priority.get('risk_level')}",
+            "agent_plan": self.build_agent_plan(query, mode="asset_diagnosis", asset_id=target),
+            "tool_calls": [
+                {"tool": "dynamic_asset_history_lookup", "agent": "Memory Agent", "input": target, "output": "latest update event loaded", "status": "success"},
+                {"tool": "priority_delta_checker", "agent": "Verifier Agent", "input": "previous state + new state", "output": f"priority_changed={priority_changed}", "status": "success"},
+            ],
+            "verifier_checks": [
+                {"check": "Update history found", "status": "pass", "detail": change.get("changed_at")},
+                {"check": "Old and new priorities compared", "status": "pass", "detail": f"{previous.get('priority')} -> {new.get('priority')}"},
+            ],
+            "decision_packet": decision_packet,
+            "answer": answer,
+            "final_answer": answer,
+            "alert_report": f"Priority change review completed for {target}.",
+            "llm_used": False,
+        }
+
     def chat(self, query: str, user_id: str = "demo_user") -> dict:
         self.ensure_ready()
         self.session_memory["user_id"] = user_id
+        if is_asset_update_query(query):
+            return self.asset_update_report(query, user_id=user_id)
+        if is_priority_change_query(query):
+            return self.dynamic_priority_change_report(query, user_id=user_id)
         if is_asset_ingestion_query(query):
             return self.asset_ingestion_report(query, user_id=user_id)
         intent_hint = classify_steel_intent(query)
@@ -1238,6 +1550,10 @@ Retrieved evidence:
             )
             .reset_index(drop=True)
         )
+        dynamic_scope_ids = set(dynamic_asset_ids())
+        ranked_ids = set(table["asset_id"].astype(str).str.upper())
+        is_dynamic_only_scope = bool(ranked_ids) and ranked_ids.issubset(dynamic_scope_ids)
+        report_title = "Dynamic Assets Priority Ranking" if is_dynamic_only_scope else "Plant-Level Maintenance Decision Summary"
         top_asset = table.iloc[0]["asset_id"]
         top_sensor = self.get_latest_sensor_summary(top_asset)
         top_spares = self.get_spares(top_asset)
@@ -1300,7 +1616,7 @@ Retrieved evidence:
         docs = dynamic_docs + docs
         agent_plan = self.build_agent_plan(query, mode="plant_priority", asset_id=top_asset)
         tool_calls = [
-            {"tool": "asset_health_scan", "agent": "Sensor Agent", "input": f"{len(asset_ids)} known assets", "output": f"{len(table)} scored rows including dynamic memory", "status": "success"},
+            {"tool": "asset_health_scan", "agent": "Sensor Agent", "input": f"{len(asset_ids)} scoped assets", "output": f"{len(table)} scored rows from {'dynamic memory only' if is_dynamic_only_scope else 'plant scope'}", "status": "success"},
             {"tool": "plant_priority_ranker", "agent": "Risk Agent", "input": "hybrid score + RUL + delay + criticality", "output": f"top asset {top_asset}", "status": "success"},
             {"tool": "rag_retriever", "agent": "Knowledge Agent", "input": "plant-level policies and evidence", "output": f"{len(docs)} evidence chunks", "status": "success"},
             {"tool": "supervisor_report_writer", "agent": "Reporter Agent", "input": top_asset, "output": "plant priority summary generated", "status": "success"},
@@ -1333,7 +1649,7 @@ Retrieved evidence:
             for r in table.itertuples()
         )
         report = f"""
-**Plant-Level Maintenance Decision Summary**
+**{report_title}**
 
 **Choose {top_asset} first.**
 
@@ -1346,7 +1662,7 @@ Retrieved evidence:
 **Agentic Control Loop**
 - Objective: {query}
 - Selected first target: {top_asset}
-- Operating mode: autonomous plant prioritization
+- Operating mode: {'dynamic-memory prioritization' if is_dynamic_only_scope else 'autonomous plant prioritization'}
 - Decision policy: rank by safety risk, hybrid risk, criticality, RUL, delay impact, and spare readiness.
 
 **Autonomous Execution Plan**
@@ -1365,7 +1681,7 @@ Retrieved evidence:
 - Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
 
 **Diagnosis**
-- Plant equipment was compared across {len(asset_ids)} known steel assets, including any user-added dynamic assets in memory.
+- Equipment was compared across {len(asset_ids)} scoped steel assets{' from dynamic memory only' if is_dynamic_only_scope else ', including any user-added dynamic assets in memory'}.
 
 **Risk and RUL**
 {ranking}

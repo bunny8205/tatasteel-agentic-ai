@@ -12,7 +12,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import traceback
 from datetime import datetime
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -530,11 +529,10 @@ class AgentHandler(BaseHTTPRequestHandler):
             result = get_wizard().chat(prompt, user_id=user_id)
             self.send_json(result)
         except Exception as exc:
-            traceback.print_exc()
+            print(f"Agent error: {exc}")
             self.send_json(
                 {
                     "error": str(exc),
-                    "traceback": traceback.format_exc(),
                     "answer": "The agent hit an error while processing this prompt.",
                 },
                 HTTPStatus.INTERNAL_SERVER_ERROR,

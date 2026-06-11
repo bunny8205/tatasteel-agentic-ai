@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+.idea/
+.streamlit/secrets.toml
+reports/
+artifacts/
+tatasteel.ipynb
+.ipynb_checkpoints/
+*.zip
+*.tar
+*.tar.gz
+.DS_Store

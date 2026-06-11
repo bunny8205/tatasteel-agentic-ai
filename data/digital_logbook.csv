@@ -1,0 +1,883 @@
+timestamp,user,asset_id,log_entry,status,user_id,query,risk_level,priority,summary
+2026-06-01 08:00:00,system,MTR-204,Initial condition review created,Open,,,,,
+2026-06-01 08:05:00,system,GBX-17,Vibration watchlist created,Open,,,,,
+2026-06-01 08:10:00,system,PMP-09,Cavitation watchlist created,Open,,,,,
+2026-06-01 08:15:00,system,HPP-12,Pressure watchlist created,Open,,,,,
+2026-06-08T20:27:18.759004,,GBX-17,,,demo_user,"GBX-17 has abnormal vibration. Give root cause, priority, spares, and alert.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Locked Decision Fields**
+- Asset ID: GBX-17
+- Equipment type: Gearbox
+- Area: Finishing Mill
+- Criticality: Critical
+- Risk level: CRITICAL
+- Priority: P1 - Immediate action
+- Hybrid failure risk: 0.8218
+- ML failure risk: 0.604
+- Operational rule score: 100.0/100
+- Hybrid health score: 82.18/100
+- RUL / remaining useful life: 1.0 days
+
+**Diagnosis**
+- The asset shows HIGH abnormality based on sensor trend, anomaly events, ML signal, and operational safety rules.
+
+**Root Cause**
+- Probable root cause: bearing wear, gear tooth wear, shaft misalignment, oil contamination, or foundation looseness.
+
+**Risk Score Explanation**
+- Gearbox vibration >= 7 mm/s: +30
+- Gearbox vibration >= 9 mm/s: +20
+- Gearbox vibration >= 10 mm/s: +10
+- Gearbox temperature >= 65 deg C: +8
+- Alarm count >= 2: +8
+- Anomaly events >= 6 in last 24h: +15
+- Anomaly events >= 18 in last 24h: +10
+- Critical equipment: +15
+- Historical delay impact 8.0 hours: +12.0
+
+**Risk and RUL Explan"
+2026-06-08T20:27:54.606712,,GBX-17,,,demo_user,Compare all equipment and tell supervisor what to prioritize today.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Locked Decision Fields**
+- Most urgent asset: GBX-17
+- Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
+
+**Diagnosis**
+- Plant equipment was compared across 4 demo steel assets.
+
+**Risk and RUL**
+- GBX-17: P1/CRITICAL, hybrid score 82.18, ML risk 0.604, rule score 100.0, RUL 1.0 days, delay 8.0h
+- MTR-204: P1/CRITICAL, hybrid score 77.78, ML risk 0.5063, rule score 100.0, RUL 1.0 days, delay 3.5h
+- PMP-09: P1/CRITICAL, hybrid score 72.21, ML risk 0.5414, rule score 87.0, RUL 1.0 days, delay 5.0h
+- HPP-12: P1/CRITICAL, hybrid score 73.07, ML risk 0.536, rule score 89.0, RUL 1.3 days, delay 4.0h
+
+**Immediate Actions**
+- Create first work order for GBX-17.
+- Reserve spares before shutdown.
+- Notify area supervisor for P1/P2 assets.
+- Continue monitoring lower-ranked assets.
+
+**Evidence / Sources**
+1. maintenance_prioritization_policy.txt (policy/priority): Maintenance pr"
+2026-06-08T20:28:14.098760,,GBX-17,,,maintenance_engineer_01,"GBX-17 diagnose current risk, root cause, RUL, spares, and alert.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Locked Decision Fields**
+- Asset ID: GBX-17
+- Equipment type: Gearbox
+- Area: Finishing Mill
+- Criticality: Critical
+- Risk level: CRITICAL
+- Priority: P1 - Immediate action
+- Hybrid failure risk: 0.8218
+- ML failure risk: 0.604
+- Operational rule score: 100.0/100
+- Hybrid health score: 82.18/100
+- RUL / remaining useful life: 1.0 days
+
+**Diagnosis**
+- The asset shows HIGH abnormality based on sensor trend, anomaly events, ML signal, and operational safety rules.
+
+**Root Cause**
+- Probable root cause: bearing wear, gear tooth wear, shaft misalignment, oil contamination, or foundation looseness.
+
+**Risk Score Explanation**
+- Gearbox vibration >= 7 mm/s: +30
+- Gearbox vibration >= 9 mm/s: +20
+- Gearbox vibration >= 10 mm/s: +10
+- Gearbox temperature >= 65 deg C: +8
+- Alarm count >= 2: +8
+- Anomaly events >= 6 in last 24h: +15
+- Anomaly events >= 18 in last 24h: +10
+- Critical equipment: +15
+- Historical delay impact 8.0 hours: +12.0
+
+**Risk and RUL Explan"
+2026-06-08T20:28:14.285971,,GBX-17,,,maintenance_engineer_01,Compare all equipment and tell supervisor what to prioritize today.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Locked Decision Fields**
+- Most urgent asset: GBX-17
+- Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
+
+**Diagnosis**
+- Plant equipment was compared across 4 demo steel assets.
+
+**Risk and RUL**
+- GBX-17: P1/CRITICAL, hybrid score 82.18, ML risk 0.604, rule score 100.0, RUL 1.0 days, delay 8.0h
+- MTR-204: P1/CRITICAL, hybrid score 77.78, ML risk 0.5063, rule score 100.0, RUL 1.0 days, delay 3.5h
+- PMP-09: P1/CRITICAL, hybrid score 72.21, ML risk 0.5414, rule score 87.0, RUL 1.0 days, delay 5.0h
+- HPP-12: P1/CRITICAL, hybrid score 73.07, ML risk 0.536, rule score 89.0, RUL 1.3 days, delay 4.0h
+
+**Immediate Actions**
+- Create first work order for GBX-17.
+- Reserve spares before shutdown.
+- Notify area supervisor for P1/P2 assets.
+- Continue monitoring lower-ranked assets.
+
+**Evidence / Sources**
+1. maintenance_prioritization_policy.txt (policy/priority): Maintenance pr"
+2026-06-08T20:29:55.228568,,GBX-17,,,maintenance_engineer_01,Compare all equipment and tell supervisor what to prioritize today.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Locked Decision Fields**
+- Most urgent asset: GBX-17
+- Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
+
+**Diagnosis**
+- Plant equipment was compared across 4 demo steel assets.
+
+**Risk and RUL**
+- GBX-17: P1/CRITICAL, hybrid score 82.18, ML risk 0.604, rule score 100.0, RUL 1.0 days, delay 8.0h
+- MTR-204: P1/CRITICAL, hybrid score 77.78, ML risk 0.5063, rule score 100.0, RUL 1.0 days, delay 3.5h
+- PMP-09: P1/CRITICAL, hybrid score 72.21, ML risk 0.5414, rule score 87.0, RUL 1.0 days, delay 5.0h
+- HPP-12: P1/CRITICAL, hybrid score 73.07, ML risk 0.536, rule score 89.0, RUL 1.3 days, delay 4.0h
+
+**Immediate Actions**
+- Create first work order for GBX-17.
+- Reserve spares before shutdown.
+- Notify area supervisor for P1/P2 assets.
+- Continue monitoring lower-ranked assets.
+
+**Evidence / Sources**
+1. maintenance_prioritization_policy.txt (policy/priority): Maintenance pr"
+2026-06-08T20:30:18.518058,,GBX-17,,,maintenance_engineer_01,"Rank GBX-17, MTR-204, PMP-09, and HPP-12 by maintenance urgency and explain the reason.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Locked Decision Fields**
+- Asset ID: GBX-17
+- Equipment type: Gearbox
+- Area: Finishing Mill
+- Criticality: Critical
+- Risk level: CRITICAL
+- Priority: P1 - Immediate action
+- Hybrid failure risk: 0.8218
+- ML failure risk: 0.604
+- Operational rule score: 100.0/100
+- Hybrid health score: 82.18/100
+- RUL / remaining useful life: 1.0 days
+
+**Diagnosis**
+- The asset shows HIGH abnormality based on sensor trend, anomaly events, ML signal, and operational safety rules.
+
+**Root Cause**
+- Probable root cause: bearing wear, gear tooth wear, shaft misalignment, oil contamination, or foundation looseness.
+
+**Risk Score Explanation**
+- Gearbox vibration >= 7 mm/s: +30
+- Gearbox vibration >= 9 mm/s: +20
+- Gearbox vibration >= 10 mm/s: +10
+- Gearbox temperature >= 65 deg C: +8
+- Alarm count >= 2: +8
+- Anomaly events >= 6 in last 24h: +15
+- Anomaly events >= 18 in last 24h: +10
+- Critical equipment: +15
+- Historical delay impact 8.0 hours: +12.0
+
+**Risk and RUL Explan"
+2026-06-08T20:30:18.828632,,GBX-17,,,maintenance_engineer_01,Compare all equipment and tell supervisor what to prioritize today.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Locked Decision Fields**
+- Most urgent asset: GBX-17
+- Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
+
+**Diagnosis**
+- Plant equipment was compared across 4 demo steel assets.
+
+**Risk and RUL**
+- GBX-17: P1/CRITICAL, hybrid score 82.18, ML risk 0.604, rule score 100.0, RUL 1.0 days, delay 8.0h
+- MTR-204: P1/CRITICAL, hybrid score 77.78, ML risk 0.5063, rule score 100.0, RUL 1.0 days, delay 3.5h
+- PMP-09: P1/CRITICAL, hybrid score 72.21, ML risk 0.5414, rule score 87.0, RUL 1.0 days, delay 5.0h
+- HPP-12: P1/CRITICAL, hybrid score 73.07, ML risk 0.536, rule score 89.0, RUL 1.3 days, delay 4.0h
+
+**Immediate Actions**
+- Create first work order for GBX-17.
+- Reserve spares before shutdown.
+- Notify area supervisor for P1/P2 assets.
+- Continue monitoring lower-ranked assets.
+
+**Evidence / Sources**
+1. maintenance_prioritization_policy.txt (policy/priority): Maintenance pr"
+2026-06-08T20:30:51.812167,,GBX-17,,,maintenance_engineer_01,"Rank GBX-17, MTR-204, PMP-09, and HPP-12 by maintenance urgency and explain the reason.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Locked Decision Fields**
+- Asset ID: GBX-17
+- Equipment type: Gearbox
+- Area: Finishing Mill
+- Criticality: Critical
+- Risk level: CRITICAL
+- Priority: P1 - Immediate action
+- Hybrid failure risk: 0.8218
+- ML failure risk: 0.604
+- Operational rule score: 100.0/100
+- Hybrid health score: 82.18/100
+- RUL / remaining useful life: 1.0 days
+
+**Diagnosis**
+- The asset shows HIGH abnormality based on sensor trend, anomaly events, ML signal, and operational safety rules.
+
+**Root Cause**
+- Probable root cause: bearing wear, gear tooth wear, shaft misalignment, oil contamination, or foundation looseness.
+
+**Risk Score Explanation**
+- Gearbox vibration >= 7 mm/s: +30
+- Gearbox vibration >= 9 mm/s: +20
+- Gearbox vibration >= 10 mm/s: +10
+- Gearbox temperature >= 65 deg C: +8
+- Alarm count >= 2: +8
+- Anomaly events >= 6 in last 24h: +15
+- Anomaly events >= 18 in last 24h: +10
+- Critical equipment: +15
+- Historical delay impact 8.0 hours: +12.0
+
+**Risk and RUL Explan"
+2026-06-08T20:30:53.887751,,GBX-17,,,maintenance_engineer_01,Compare all equipment and tell supervisor what to prioritize today.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Locked Decision Fields**
+- Most urgent asset: GBX-17
+- Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
+
+**Diagnosis**
+- Plant equipment was compared across 4 demo steel assets.
+
+**Risk and RUL**
+- GBX-17: P1/CRITICAL, hybrid score 82.18, ML risk 0.604, rule score 100.0, RUL 1.0 days, delay 8.0h
+- MTR-204: P1/CRITICAL, hybrid score 77.78, ML risk 0.5063, rule score 100.0, RUL 1.0 days, delay 3.5h
+- PMP-09: P1/CRITICAL, hybrid score 72.21, ML risk 0.5414, rule score 87.0, RUL 1.0 days, delay 5.0h
+- HPP-12: P1/CRITICAL, hybrid score 73.07, ML risk 0.536, rule score 89.0, RUL 1.3 days, delay 4.0h
+
+**Immediate Actions**
+- Create first work order for GBX-17.
+- Reserve spares before shutdown.
+- Notify area supervisor for P1/P2 assets.
+- Continue monitoring lower-ranked assets.
+
+**Evidence / Sources**
+1. maintenance_prioritization_policy.txt (policy/priority): Maintenance pr"
+2026-06-08T20:39:00.632493,,GBX-17,,,prompt_lab,"GBX-17 has abnormal vibration and temperature rise. Act as an autonomous maintenance agent: diagnose root cause, prioritize risk, plan spares, and generate an alert.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Agentic Control Loop**
+- Objective: GBX-17 has abnormal vibration and temperature rise. Act as an autonomous maintenance agent: diagnose root cause, prioritize risk, plan spares, and generate an alert.
+- Selected asset: GBX-17
+- Operating mode: autonomous maintenance diagnosis
+- Decision policy: lock deterministic safety fields first, then use LLM only for engineer explanation.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Identify required spare strategy for current maintenance risk [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation"
+2026-06-08T20:39:00.654119,,MTR-204,,,prompt_lab,"MTR-204 motor current and temperature are high. Give me the agent plan, risk score reasoning, RUL, immediate work order, and spare strategy.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Agentic Control Loop**
+- Objective: MTR-204 motor current and temperature are high. Give me the agent plan, risk score reasoning, RUL, immediate work order, and spare strategy.
+- Selected asset: MTR-204
+- Operating mode: autonomous maintenance diagnosis
+- Decision policy: lock deterministic safety fields first, then use LLM only for engineer explanation.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Identify required spare strategy for current maintenance risk [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recomme"
+2026-06-08T20:39:00.684901,,GBX-17,,,prompt_lab,Compare all equipment and tell the supervisor what to prioritize today. Include your tool calls and verifier checks.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Agentic Control Loop**
+- Objective: Compare all equipment and tell the supervisor what to prioritize today. Include your tool calls and verifier checks.
+- Selected first target: GBX-17
+- Operating mode: autonomous plant prioritization
+- Decision policy: rank by safety risk, hybrid risk, criticality, RUL, delay impact, and spare readiness.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Rank plant assets and select the best maintenance target [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recommendatio"
+2026-06-08T20:39:00.704900,,GBX-17,,,prompt_lab,"For the same asset, what spare should I arrange next and why?",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Agentic Control Loop**
+- Objective: For the same asset, what spare should I arrange next and why?
+- Selected asset: GBX-17
+- Operating mode: autonomous maintenance diagnosis
+- Decision policy: lock deterministic safety fields first, then use LLM only for engineer explanation.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Identify required spare strategy for current maintenance risk [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recommendation [complete]
+- Step 7 | Verifier Agent: Check locked fields, traceability,"
+2026-06-08T20:39:39.414341,,GBX-17,,,prompt_lab,"GBX-17 has abnormal vibration and temperature rise. Act as an autonomous maintenance agent: diagnose root cause, prioritize risk, plan spares, and generate an alert.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Agentic Control Loop**
+- Objective: GBX-17 has abnormal vibration and temperature rise. Act as an autonomous maintenance agent: diagnose root cause, prioritize risk, plan spares, and generate an alert.
+- Selected asset: GBX-17
+- Operating mode: autonomous maintenance diagnosis
+- Decision policy: lock deterministic safety fields first, then use LLM only for engineer explanation.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Diagnose equipment issue and produce maintenance decision support [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escala"
+2026-06-08T20:39:39.445455,,MTR-204,,,prompt_lab,"MTR-204 motor current and temperature are high. Give me the agent plan, risk score reasoning, RUL, immediate work order, and spare strategy.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Agentic Control Loop**
+- Objective: MTR-204 motor current and temperature are high. Give me the agent plan, risk score reasoning, RUL, immediate work order, and spare strategy.
+- Selected asset: MTR-204
+- Operating mode: autonomous maintenance diagnosis
+- Decision policy: lock deterministic safety fields first, then use LLM only for engineer explanation.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Diagnose equipment issue and produce maintenance decision support [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order rec"
+2026-06-08T20:39:39.481614,,GBX-17,,,prompt_lab,Compare all equipment and tell the supervisor what to prioritize today. Include your tool calls and verifier checks.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Agentic Control Loop**
+- Objective: Compare all equipment and tell the supervisor what to prioritize today. Include your tool calls and verifier checks.
+- Selected first target: GBX-17
+- Operating mode: autonomous plant prioritization
+- Decision policy: rank by safety risk, hybrid risk, criticality, RUL, delay impact, and spare readiness.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Rank plant assets and select the best maintenance target [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recommendatio"
+2026-06-08T20:39:39.515140,,GBX-17,,,prompt_lab,"For the same asset, what spare should I arrange next and why?",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Agentic Control Loop**
+- Objective: For the same asset, what spare should I arrange next and why?
+- Selected asset: GBX-17
+- Operating mode: autonomous maintenance diagnosis
+- Decision policy: lock deterministic safety fields first, then use LLM only for engineer explanation.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Identify required spare strategy for current maintenance risk [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recommendation [complete]
+- Step 7 | Verifier Agent: Check locked fields, traceability,"
+2026-06-08T20:41:57.078902,,GBX-17,,,maintenance_engineer_01,Compare all equipment and tell supervisor what to prioritize today.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Locked Decision Fields**
+- Most urgent asset: GBX-17
+- Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
+
+**Diagnosis**
+- Plant equipment was compared across 4 demo steel assets.
+
+**Risk and RUL**
+- GBX-17: P1/CRITICAL, hybrid score 82.18, ML risk 0.604, rule score 100.0, RUL 1.0 days, delay 8.0h
+- MTR-204: P1/CRITICAL, hybrid score 77.78, ML risk 0.5063, rule score 100.0, RUL 1.0 days, delay 3.5h
+- PMP-09: P1/CRITICAL, hybrid score 72.21, ML risk 0.5414, rule score 87.0, RUL 1.0 days, delay 5.0h
+- HPP-12: P1/CRITICAL, hybrid score 73.07, ML risk 0.536, rule score 89.0, RUL 1.3 days, delay 4.0h
+
+**Immediate Actions**
+- Create first work order for GBX-17.
+- Reserve spares before shutdown.
+- Notify area supervisor for P1/P2 assets.
+- Continue monitoring lower-ranked assets.
+
+**Evidence / Sources**
+1. maintenance_prioritization_policy.txt (policy/priority): Maintenance pr"
+2026-06-08T20:42:11.692856,,GBX-17,,,maintenance_engineer_01,"GBX-17 diagnose current risk, root cause, RUL, spares, and alert.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Locked Decision Fields**
+- Asset ID: GBX-17
+- Equipment type: Gearbox
+- Area: Finishing Mill
+- Criticality: Critical
+- Risk level: CRITICAL
+- Priority: P1 - Immediate action
+- Hybrid failure risk: 0.8218
+- ML failure risk: 0.604
+- Operational rule score: 100.0/100
+- Hybrid health score: 82.18/100
+- RUL / remaining useful life: 1.0 days
+
+**Diagnosis**
+- The asset shows HIGH abnormality based on sensor trend, anomaly events, ML signal, and operational safety rules.
+
+**Root Cause**
+- Probable root cause: bearing wear, gear tooth wear, shaft misalignment, oil contamination, or foundation looseness.
+
+**Risk Score Explanation**
+- Gearbox vibration >= 7 mm/s: +30
+- Gearbox vibration >= 9 mm/s: +20
+- Gearbox vibration >= 10 mm/s: +10
+- Gearbox temperature >= 65 deg C: +8
+- Alarm count >= 2: +8
+- Anomaly events >= 6 in last 24h: +15
+- Anomaly events >= 18 in last 24h: +10
+- Critical equipment: +15
+- Historical delay impact 8.0 hours: +12.0
+
+**Risk and RUL Explan"
+2026-06-08T20:42:12.242614,,GBX-17,,,maintenance_engineer_01,Compare all equipment and tell supervisor what to prioritize today.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Locked Decision Fields**
+- Most urgent asset: GBX-17
+- Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
+
+**Diagnosis**
+- Plant equipment was compared across 4 demo steel assets.
+
+**Risk and RUL**
+- GBX-17: P1/CRITICAL, hybrid score 82.18, ML risk 0.604, rule score 100.0, RUL 1.0 days, delay 8.0h
+- MTR-204: P1/CRITICAL, hybrid score 77.78, ML risk 0.5063, rule score 100.0, RUL 1.0 days, delay 3.5h
+- PMP-09: P1/CRITICAL, hybrid score 72.21, ML risk 0.5414, rule score 87.0, RUL 1.0 days, delay 5.0h
+- HPP-12: P1/CRITICAL, hybrid score 73.07, ML risk 0.536, rule score 89.0, RUL 1.3 days, delay 4.0h
+
+**Immediate Actions**
+- Create first work order for GBX-17.
+- Reserve spares before shutdown.
+- Notify area supervisor for P1/P2 assets.
+- Continue monitoring lower-ranked assets.
+
+**Evidence / Sources**
+1. maintenance_prioritization_policy.txt (policy/priority): Maintenance pr"
+2026-06-08T20:46:26.241010,,GBX-17,,,maintenance_engineer_01,Compare all equipment and tell supervisor what to prioritize today.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Locked Decision Fields**
+- Most urgent asset: GBX-17
+- Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
+
+**Diagnosis**
+- Plant equipment was compared across 4 demo steel assets.
+
+**Risk and RUL**
+- GBX-17: P1/CRITICAL, hybrid score 82.18, ML risk 0.604, rule score 100.0, RUL 1.0 days, delay 8.0h
+- MTR-204: P1/CRITICAL, hybrid score 77.78, ML risk 0.5063, rule score 100.0, RUL 1.0 days, delay 3.5h
+- PMP-09: P1/CRITICAL, hybrid score 72.21, ML risk 0.5414, rule score 87.0, RUL 1.0 days, delay 5.0h
+- HPP-12: P1/CRITICAL, hybrid score 73.07, ML risk 0.536, rule score 89.0, RUL 1.3 days, delay 4.0h
+
+**Immediate Actions**
+- Create first work order for GBX-17.
+- Reserve spares before shutdown.
+- Notify area supervisor for P1/P2 assets.
+- Continue monitoring lower-ranked assets.
+
+**Evidence / Sources**
+1. maintenance_prioritization_policy.txt (policy/priority): Maintenance pr"
+2026-06-08T20:46:29.305850,,GBX-17,,,maintenance_engineer_01,"GBX-17 diagnose current risk, root cause, RUL, spares, and alert.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Locked Decision Fields**
+- Asset ID: GBX-17
+- Equipment type: Gearbox
+- Area: Finishing Mill
+- Criticality: Critical
+- Risk level: CRITICAL
+- Priority: P1 - Immediate action
+- Hybrid failure risk: 0.8218
+- ML failure risk: 0.604
+- Operational rule score: 100.0/100
+- Hybrid health score: 82.18/100
+- RUL / remaining useful life: 1.0 days
+
+**Diagnosis**
+- The asset shows HIGH abnormality based on sensor trend, anomaly events, ML signal, and operational safety rules.
+
+**Root Cause**
+- Probable root cause: bearing wear, gear tooth wear, shaft misalignment, oil contamination, or foundation looseness.
+
+**Risk Score Explanation**
+- Gearbox vibration >= 7 mm/s: +30
+- Gearbox vibration >= 9 mm/s: +20
+- Gearbox vibration >= 10 mm/s: +10
+- Gearbox temperature >= 65 deg C: +8
+- Alarm count >= 2: +8
+- Anomaly events >= 6 in last 24h: +15
+- Anomaly events >= 18 in last 24h: +10
+- Critical equipment: +15
+- Historical delay impact 8.0 hours: +12.0
+
+**Risk and RUL Explan"
+2026-06-08T20:46:29.509099,,GBX-17,,,maintenance_engineer_01,Compare all equipment and tell supervisor what to prioritize today.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Locked Decision Fields**
+- Most urgent asset: GBX-17
+- Ranking basis: hybrid ML + operational rule score, criticality, delay severity, RUL, anomaly status, spares/procurement.
+
+**Diagnosis**
+- Plant equipment was compared across 4 demo steel assets.
+
+**Risk and RUL**
+- GBX-17: P1/CRITICAL, hybrid score 82.18, ML risk 0.604, rule score 100.0, RUL 1.0 days, delay 8.0h
+- MTR-204: P1/CRITICAL, hybrid score 77.78, ML risk 0.5063, rule score 100.0, RUL 1.0 days, delay 3.5h
+- PMP-09: P1/CRITICAL, hybrid score 72.21, ML risk 0.5414, rule score 87.0, RUL 1.0 days, delay 5.0h
+- HPP-12: P1/CRITICAL, hybrid score 73.07, ML risk 0.536, rule score 89.0, RUL 1.3 days, delay 4.0h
+
+**Immediate Actions**
+- Create first work order for GBX-17.
+- Reserve spares before shutdown.
+- Notify area supervisor for P1/P2 assets.
+- Continue monitoring lower-ranked assets.
+
+**Evidence / Sources**
+1. maintenance_prioritization_policy.txt (policy/priority): Maintenance pr"
+2026-06-11T14:58:17.962051,,Continuous Caster,,,smoke_test,A continuous caster mold temperature is rising and breakout alarms are appearing. Build an action plan.,CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- A continuous caster mold temperature is rising and breakout alarms are appearing. Build an action plan.
+
+**Interpreted Intent**
+- Intent: general steel copilot
+- Subject: Continuous Caster
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Solve the steel operations request [complete]
+- Step 2 | Triage Agent: Classify intent as general_steel_copilot and subject as Continuous Caster [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complet"
+2026-06-11T14:58:17.973052,,Rolling Mill,,,smoke_test,Create an RCA for repeated bearing failures in a hot strip mill gearbox.,CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- Create an RCA for repeated bearing failures in a hot strip mill gearbox.
+
+**Interpreted Intent**
+- Intent: root cause analysis
+- Subject: Rolling Mill
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Diagnose probable root cause and corrective actions [complete]
+- Step 2 | Triage Agent: Classify intent as root_cause_analysis and subject as Rolling Mill [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complete]
+- Step 7 | Memory Agent: "
+2026-06-11T14:58:18.023955,,GBX-17,,,smoke_test,Compare all current assets and tell the supervisor what to do this shift.,PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Agentic Control Loop**
+- Objective: Compare all current assets and tell the supervisor what to do this shift.
+- Selected first target: GBX-17
+- Operating mode: autonomous plant prioritization
+- Decision policy: rank by safety risk, hybrid risk, criticality, RUL, delay impact, and spare readiness.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Rank plant assets and select the best maintenance target [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recommendation [complete]
+- Step 7 | Verifier Agent: Che"
+2026-06-11T14:58:18.053381,,GBX-17,,,smoke_test,"GBX-17 abnormal vibration. Diagnose root cause, RUL, spares, and alert.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Agentic Control Loop**
+- Objective: GBX-17 abnormal vibration. Diagnose root cause, RUL, spares, and alert.
+- Selected asset: GBX-17
+- Operating mode: autonomous maintenance diagnosis
+- Decision policy: lock deterministic safety fields first, then use LLM only for engineer explanation.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Diagnose equipment issue and produce maintenance decision support [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recommendation [complete]
+- Step 7 | Verifier Agent: Check locked fields,"
+2026-06-11T14:58:18.066380,,BOF Converter,,,smoke_test,Plan spares and procurement for BOF trunnion bearing maintenance.,CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- Plan spares and procurement for BOF trunnion bearing maintenance.
+
+**Interpreted Intent**
+- Intent: spares procurement
+- Subject: BOF Converter
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Plan spares and procurement [complete]
+- Step 2 | Triage Agent: Classify intent as spares_procurement and subject as BOF Converter [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complete]
+- Step 7 | Memory Agent: Prepare logbook and feedback ho"
+2026-06-11T15:00:48.412143,,Continuous Caster,,,smoke_test,A continuous caster mold temperature is rising and breakout alarms are appearing. Build an action plan.,CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- A continuous caster mold temperature is rising and breakout alarms are appearing. Build an action plan.
+
+**Interpreted Intent**
+- Intent: failure prediction
+- Subject: Continuous Caster
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Predict failure risk and early warnings [complete]
+- Step 2 | Triage Agent: Classify intent as failure_prediction and subject as Continuous Caster [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complete"
+2026-06-11T15:00:48.432026,,Rolling Mill,,,smoke_test,Create an RCA for repeated bearing failures in a hot strip mill gearbox.,CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- Create an RCA for repeated bearing failures in a hot strip mill gearbox.
+
+**Interpreted Intent**
+- Intent: root cause analysis
+- Subject: Rolling Mill
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Diagnose probable root cause and corrective actions [complete]
+- Step 2 | Triage Agent: Classify intent as root_cause_analysis and subject as Rolling Mill [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complete]
+- Step 7 | Memory Agent: "
+2026-06-11T15:00:48.450389,,BOF Converter,,,smoke_test,Plan spares and procurement for BOF trunnion bearing maintenance.,CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- Plan spares and procurement for BOF trunnion bearing maintenance.
+
+**Interpreted Intent**
+- Intent: spares procurement
+- Subject: BOF Converter
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Plan spares and procurement [complete]
+- Step 2 | Triage Agent: Classify intent as spares_procurement and subject as BOF Converter [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complete]
+- Step 7 | Memory Agent: Prepare logbook and feedback ho"
+2026-06-11T15:00:48.552165,,GBX-17,,,smoke_test,"GBX-17 abnormal vibration. Diagnose root cause, RUL, spares, and alert.",CRITICAL,P1,"**Maintenance Wizard Report**
+
+**Agentic Control Loop**
+- Objective: GBX-17 abnormal vibration. Diagnose root cause, RUL, spares, and alert.
+- Selected asset: GBX-17
+- Operating mode: autonomous maintenance diagnosis
+- Decision policy: lock deterministic safety fields first, then use LLM only for engineer explanation.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Diagnose equipment issue and produce maintenance decision support [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recommendation [complete]
+- Step 7 | Verifier Agent: Check locked fields,"
+2026-06-11T15:05:22.038767,,Rolling Mill,,,demo_user,How do we reduce downtime this shift in the finishing mill?,CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- How do we reduce downtime this shift in the finishing mill?
+
+**Interpreted Intent**
+- Intent: general steel copilot
+- Subject: Rolling Mill
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Solve the steel operations request [complete]
+- Step 2 | Triage Agent: Classify intent as general_steel_copilot and subject as Rolling Mill [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complete]
+- Step 7 | Memory Agent: Prepare logbook and feedba"
+2026-06-11T15:05:22.049751,,Steel Plant,,,demo_user,Design an agentic workflow for steel maintenance decision support.,CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- Design an agentic workflow for steel maintenance decision support.
+
+**Interpreted Intent**
+- Intent: data agent design
+- Subject: Steel Plant
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Design or explain an agentic AI workflow [complete]
+- Step 2 | Triage Agent: Classify intent as data_agent_design and subject as Steel Plant [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complete]
+- Step 7 | Memory Agent: Prepare logbook and fee"
+2026-06-11T15:05:22.056751,,Hydraulic System,,,demo_user,Give a safety isolation checklist for a hydraulic equipment issue.,CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- Give a safety isolation checklist for a hydraulic equipment issue.
+
+**Interpreted Intent**
+- Intent: safety control
+- Subject: Hydraulic System
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Create safety controls and stop-work logic [complete]
+- Step 2 | Triage Agent: Classify intent as safety_control and subject as Hydraulic System [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complete]
+- Step 7 | Memory Agent: Prepare logbook a"
+2026-06-11T15:10:07.005755,,Steel Plant,,,maintenance_engineer_01,"If I can maintain only one asset today, which one should I choose and why?",CONTEXTUAL,AGENT,"**Steel Plant Agent Response**
+
+**Objective**
+- If I can maintain only one asset today, which one should I choose and why?
+
+**Interpreted Intent**
+- Intent: root cause analysis
+- Subject: Steel Plant
+- Agent stance: I will treat this as a steel-plant decision task, not a generic chatbot answer.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Diagnose probable root cause and corrective actions [complete]
+- Step 2 | Triage Agent: Classify intent as root_cause_analysis and subject as Steel Plant [complete]
+- Step 3 | Retrieval Agent: Pull manuals, SOPs, history, failures, spares, policy, and live health evidence [complete]
+- Step 4 | Reasoning Agent: Convert evidence into hypotheses, risks, actions, assumptions, and missing data [complete]
+- Step 5 | Planning Agent: Create ordered actions, owner handoffs, spare plan, and escalation logic [complete]
+- Step 6 | Verifier Agent: Check traceability, safety, decision completeness, and uncertainty [complete]
+- Step 7 | Memory Agent: "
+2026-06-11T15:13:37.009609,,GBX-17,,,demo_user,"If I can maintain only one asset today, which one should I choose and why?",PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Agentic Control Loop**
+- Objective: If I can maintain only one asset today, which one should I choose and why?
+- Selected first target: GBX-17
+- Operating mode: autonomous plant prioritization
+- Decision policy: rank by safety risk, hybrid risk, criticality, RUL, delay impact, and spare readiness.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Rank plant assets and select the best maintenance target [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recommendation [complete]
+- Step 7 | Verifier Agent: Ch"
+2026-06-11T15:16:34.855132,,GBX-17,,,demo_user,"If I can maintain only one asset today, which one should I choose and why?",PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Choose GBX-17 first.**
+
+**Reason**
+- GBX-17 has the highest combined plant priority score from hybrid health risk, criticality, RUL, delay impact, and spare readiness.
+- Current locked fields: P1/CRITICAL, hybrid health score 82.18, hybrid failure risk 0.8218, RUL 1.0 days.
+- Latest condition: temperature 71.76, vibration 11.0, pressure 9.8, alarms 3.
+- It is ahead of MTR-204: MTR-204 is P1/CRITICAL with hybrid health score 77.78 and RUL 1.0 days.
+
+**Agentic Control Loop**
+- Objective: If I can maintain only one asset today, which one should I choose and why?
+- Selected first target: GBX-17
+- Operating mode: autonomous plant prioritization
+- Decision policy: rank by safety risk, hybrid risk, criticality, RUL, delay impact, and spare readiness.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Rank plant assets and select the best maintenance target [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating con"
+2026-06-11T15:18:39.049972,,GBX-17,,,maintenance_engineer_01,"Design an agentic workflow for steel plant predictive maintenance using logs, SOPs, sensor alerts, and feedback.",PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Agentic Control Loop**
+- Objective: Design an agentic workflow for steel plant predictive maintenance using logs, SOPs, sensor alerts, and feedback.
+- Selected first target: GBX-17
+- Operating mode: autonomous plant prioritization
+- Decision policy: rank by safety risk, hybrid risk, criticality, RUL, delay impact, and spare readiness.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Rank plant assets and select the best maintenance target [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating context [complete]
+- Step 3 | Sensor Agent: Read latest sensor state, anomaly events, and RUL indicators [complete]
+- Step 4 | Knowledge Agent: Retrieve SOP, history, failure reports, spares, and policy evidence [complete]
+- Step 5 | Risk Agent: Fuse ML risk with operational rule score and criticality [complete]
+- Step 6 | Planner Agent: Create action plan, spare strategy, escalation, and work-order recommendation [c"
+2026-06-11T15:23:33.983211,,Steel Plant,,,demo_user,"Design an agentic workflow for steel plant predictive maintenance using logs, SOPs, sensor alerts, and feedback.",CONTEXTUAL,AGENT,"**Agentic Predictive Maintenance Workflow Design**
+
+**Mode**
+- agentic_workflow_design
+
+**Intent**
+- predictive_maintenance_workflow_design
+
+**Applied Live Demo Target**
+- GBX-17
+
+**Framing**
+- The workflow design is the main answer.
+- To demonstrate the workflow on live plant data, the agent applied it to the current asset-health table and selected GBX-17 as the first maintenance target.
+
+**1. Agentic Workflow Design**
+- Design the agent loop: perceive, retrieve, reason, act, verify, log, and learn.
+- Use logs, SOPs, sensor alerts, failure reports, spares, production delay, and feedback as separate tool inputs.
+- Keep ML risk, RUL, priority, safety gates, and selected target as locked deterministic fields.
+- Use the LLM for planning, explanation, multi-turn interaction, report writing, and operator/supervisor adaptation.
+
+**2. Live Execution Example**
+- Current highest-risk live target: GBX-17
+- Risk band: CRITICAL
+- Hybrid risk: 0.822
+- RUL: 1.0 days
+
+**3. Why The Demo Target Was Sel"
+2026-06-11T15:23:34.046944,,GBX-17,,,demo_user,"If I can maintain only one asset today, which one should I choose and why?",PLANT_SUMMARY,PLANT,"**Plant-Level Maintenance Decision Summary**
+
+**Choose GBX-17 first.**
+
+**Reason**
+- GBX-17 has the highest combined plant priority score from hybrid health risk, criticality, RUL, delay impact, and spare readiness.
+- Current locked fields: P1/CRITICAL, hybrid health score 82.18, hybrid failure risk 0.8218, RUL 1.0 days.
+- Latest condition: temperature 71.76, vibration 11.0, pressure 9.8, alarms 3.
+- It is ahead of MTR-204: MTR-204 is P1/CRITICAL with hybrid health score 77.78 and RUL 1.0 days.
+
+**Agentic Control Loop**
+- Objective: If I can maintain only one asset today, which one should I choose and why?
+- Selected first target: GBX-17
+- Operating mode: autonomous plant prioritization
+- Decision policy: rank by safety risk, hybrid risk, criticality, RUL, delay impact, and spare readiness.
+
+**Autonomous Execution Plan**
+- Step 1 | Supervisor Agent: Rank plant assets and select the best maintenance target [complete]
+- Step 2 | Triage Agent: Resolve asset, user intent, and operating con"
+2026-06-11T15:24:22.882456,,Steel Plant,,,demo_user,"Design an agentic workflow for steel plant predictive maintenance using logs, SOPs, sensor alerts, and feedback.",CONTEXTUAL,AGENT,"**Agentic Predictive Maintenance Workflow Design**
+
+**Mode**
+- agentic_workflow_design
+
+**Intent**
+- predictive_maintenance_workflow_design
+
+**Applied Live Demo Target**
+- GBX-17
+
+**Framing**
+- The workflow design is the main answer.
+- To demonstrate the workflow on live plant data, the agent applied it to the current asset-health table and selected GBX-17 as the first maintenance target.
+
+**1. Agentic Workflow Design**
+- Design the agent loop: perceive, retrieve, reason, act, verify, log, and learn.
+- Use logs, SOPs, sensor alerts, failure reports, spares, production delay, and feedback as separate tool inputs.
+- Keep ML risk, RUL, priority, safety gates, and selected target as locked deterministic fields.
+- Use the LLM for planning, explanation, multi-turn interaction, report writing, and operator/supervisor adaptation.
+
+**2. Live Execution Example**
+- Current highest-risk live target: GBX-17
+- Risk band: CRITICAL
+- Hybrid risk: 0.822
+- RUL: 1.0 days
+
+**3. Why The Demo Target Was Sel"

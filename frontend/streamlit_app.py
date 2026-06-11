@@ -31,10 +31,6 @@ def get_wizard() -> MaintenanceWizard:
     wizard.initialize(load_llm=False)
     return wizard
 
-
-wizard = get_wizard()
-
-
 st.markdown(
     """
     <style>
@@ -70,6 +66,20 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+st.markdown('<div class="agent-title">Tata Steel Agentic AI</div>', unsafe_allow_html=True)
+st.markdown(
+    '<div class="agent-subtitle">Steel maintenance, reliability, safety, spares, RCA, SOP, and plant-priority agent.</div>',
+    unsafe_allow_html=True,
+)
+
+try:
+    with st.spinner("Loading steel agent, ML health tables, and retrieval index..."):
+        wizard = get_wizard()
+except Exception as exc:
+    st.error("The Steel Plant Agent backend failed to start.")
+    st.exception(exc)
+    st.stop()
 
 
 def init_state() -> None:
@@ -184,12 +194,6 @@ def run_prompt(prompt: str) -> None:
 
 init_state()
 render_sidebar()
-
-st.markdown('<div class="agent-title">Tata Steel Agentic AI</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="agent-subtitle">Steel maintenance, reliability, safety, spares, RCA, SOP, and plant-priority agent.</div>',
-    unsafe_allow_html=True,
-)
 
 if st.session_state.get("pending_prompt"):
     prompt = st.session_state.pop("pending_prompt")

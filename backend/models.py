@@ -196,7 +196,24 @@ class ModelManager:
     def train_or_load(self, force: bool = False) -> "ModelManager":
         scored_path = DATA_DIR / "steel_sensor_logs_scored.csv"
         health_path = DATA_DIR / "asset_health_summary.csv"
-        # Models are lightweight enough to retrain on app startup; scored files are reused for tables.
+        summary_path = REPORT_DIR / "model_summary.json"
+
+        if not force and scored_path.exists() and health_path.exists():
+            self.steel_df = pd.read_csv(scored_path)
+            self.asset_health = pd.read_csv(health_path)
+            public_path = DATA_DIR / "public_ai4i_common_schema.csv"
+            self.public_df = pd.read_csv(public_path) if public_path.exists() else pd.DataFrame()
+            if summary_path.exists():
+                self.model_summary = json.loads(summary_path.read_text(encoding="utf-8"))
+                self.steel_threshold = float(self.model_summary.get("steel_threshold", 0.5))
+                self.public_threshold = float(self.model_summary.get("public_threshold", 0.5))
+            else:
+                self.model_summary = {
+                    "startup_mode": "precomputed_scored_data",
+                    "important_note": "Cloud app reused committed scored steel data for fast startup.",
+                }
+            return self
+
         steel_raw = pd.read_csv(DATA_DIR / "steel_sensor_logs.csv")
         public_path = DATA_DIR / "public_ai4i_common_schema.csv"
         public_raw = pd.read_csv(public_path) if public_path.exists() else pd.DataFrame()
@@ -324,6 +341,8 @@ class ModelManager:
 
     def score_live_alert(self, row: dict) -> dict:
         assert self.steel_df is not None
+        if self.steel_risk_model is None or self.steel_anomaly_model is None:
+            self.train_or_load(force=True)
         prev = self.steel_df[self.steel_df["asset_id"] == row["asset_id"]].tail(23).copy()
         x = pd.DataFrame([row])[FEATURE_COLS].copy()
         row["ml_failure_risk"] = float(self.steel_risk_model.predict_proba(x)[0, 1])

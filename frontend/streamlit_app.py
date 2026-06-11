@@ -215,15 +215,11 @@ if st.session_state.get("pending_prompt"):
     prompt = st.session_state.pop("pending_prompt")
     run_prompt(prompt)
 
+if prompt := st.chat_input("Ask the steel agent"):
+    run_prompt(prompt)
+
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
-
-if prompt := st.chat_input("Ask the steel agent"):
-    run_prompt(prompt)
-    with st.chat_message("user"):
-        st.markdown(prompt)
-    with st.chat_message("assistant"):
-        st.markdown(st.session_state.messages[-1]["content"])
 
 render_workspace(st.session_state.last_result)

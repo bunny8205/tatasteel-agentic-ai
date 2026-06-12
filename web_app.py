@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from datetime import datetime
 from http import HTTPStatus
@@ -51,14 +52,24 @@ def jsonable(value: Any) -> Any:
         return {str(k): jsonable(v) for k, v in value.items()}
     if isinstance(value, (list, tuple, set)):
         return [jsonable(v) for v in value]
+    if value is None:
+        return None
     if isinstance(value, (np.integer,)):
         return int(value)
     if isinstance(value, (np.floating,)):
-        return float(value)
+        number = float(value)
+        return number if math.isfinite(number) else None
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
     if isinstance(value, (np.bool_,)):
         return bool(value)
     if isinstance(value, (datetime, pd.Timestamp)):
         return value.isoformat()
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
     try:
         json.dumps(value)
         return value
@@ -475,7 +486,7 @@ class AgentHandler(BaseHTTPRequestHandler):
         print(f"[{datetime.now().strftime('%H:%M:%S')}] {self.address_string()} {fmt % args}")
 
     def send_json(self, payload: Any, status: int = HTTPStatus.OK) -> None:
-        body = json.dumps(jsonable(payload), ensure_ascii=False).encode("utf-8")
+        body = json.dumps(jsonable(payload), ensure_ascii=False, allow_nan=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))

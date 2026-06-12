@@ -30,6 +30,7 @@ DYNAMIC_ASSET_COLUMNS = [
     "alarm_count",
     "delay_hours",
     "spare_lead_time_days",
+    "operator_notes",
     "created_at",
     "updated_at",
     "source_query",
@@ -62,6 +63,11 @@ NUMERIC_FIELDS = [
     "delay_hours",
     "spare_lead_time_days",
 ]
+
+READING_CONNECTOR = (
+    r"(?:\s+(?:is|was|has|have|now|changed|increased|decreased|reduced|improved|"
+    r"dropped|rose|fell|went|became|set|updated))*\s*(?:=|:|to)?\s*"
+)
 
 
 def _clean_text(value: Any, default: str = "") -> str:
@@ -110,6 +116,43 @@ def _extract_number(patterns: list[str], text: str, default: float | None = None
     return default
 
 
+def _reading_pattern(label: str) -> str:
+    return rf"\b{label}{READING_CONNECTOR}(-?\d+(?:\.\d+)?)"
+
+
+def _extract_operator_notes(text: str) -> str:
+    notes: list[str] = []
+    patterns = [
+        r"\b(?:operator|technician|engineer|shift team|maintenance team)\s+(?:reports?|reported|observes?|observed|mentions?|mentioned|hears?|heard|sees?|saw)\s+([^.;\n]+)",
+        r"\b(?:symptom|observation|operator note|field note|note)\s*(?:is|=|:)?\s*([^.;\n]+)",
+        r"\b(?:but|and)\s+(?:there is|there are|there was|there were|it has|asset has|shows?|showing)\s+([^.;\n]*(?:noise|cavitation|leak|smoke|smell|surge|sparking|overheat|overheating|vibration|chatter|rubbing)[^.;\n]*)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, flags=re.IGNORECASE)
+        if match:
+            note = re.sub(r"\s+", " ", match.group(1)).strip(" ,:-")
+            if note and note.lower() not in {n.lower() for n in notes}:
+                notes.append(note)
+    lowered = text.lower()
+    symptom_phrases = [
+        "loud cavitation noise",
+        "cavitation noise",
+        "abnormal noise",
+        "bearing noise",
+        "burning smell",
+        "oil leak",
+        "hydraulic leak",
+        "smoke",
+        "sparking",
+        "surging",
+    ]
+    for phrase in symptom_phrases:
+        existing = {n.lower() for n in notes}
+        if phrase in lowered and phrase not in existing and not any(phrase in note or note in phrase for note in existing):
+            notes.append(phrase)
+    return "; ".join(notes)
+
+
 def _json_clean(record: dict) -> dict:
     clean: dict[str, Any] = {}
     for key, value in record.items():
@@ -134,6 +177,8 @@ def load_dynamic_assets() -> pd.DataFrame:
                 df[col] = np.nan
         for col in NUMERIC_FIELDS:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+        for col in ["asset_id", "asset_type", "area", "criticality", "operator_notes", "created_at", "updated_at", "source_query"]:
+            df[col] = df[col].astype("object")
         df["asset_id"] = df["asset_id"].astype(str).str.upper()
         return df[DYNAMIC_ASSET_COLUMNS].copy()
     return pd.DataFrame(columns=DYNAMIC_ASSET_COLUMNS)
@@ -145,6 +190,8 @@ def save_dynamic_assets(df: pd.DataFrame) -> None:
         if col not in df.columns:
             df[col] = np.nan
     out = df[DYNAMIC_ASSET_COLUMNS].copy()
+    for col in ["asset_id", "asset_type", "area", "criticality", "operator_notes", "created_at", "updated_at", "source_query"]:
+        out[col] = out[col].astype("object")
     out["asset_id"] = out["asset_id"].astype(str).str.upper()
     out.to_csv(DYNAMIC_ASSET_PATH, index=False)
 
@@ -392,21 +439,22 @@ def parse_dynamic_assets(query: str) -> list[dict]:
             "asset_type": asset_type,
             "area": area,
             "criticality": _criticality_from_segment(segment),
-            "temperature": _extract_number([r"\btemp(?:erature)?\s*(?:is|=|:|to)?\s*(-?\d+(?:\.\d+)?)"], segment, np.nan),
-            "vibration": _extract_number([r"\bvib(?:ration)?\s*(?:is|=|:|to)?\s*(-?\d+(?:\.\d+)?)"], segment, np.nan),
-            "current": _extract_number([r"\bcurrent\s*(?:is|=|:|to)?\s*(-?\d+(?:\.\d+)?)"], segment, np.nan),
-            "pressure": _extract_number([r"\bpressure\s*(?:is|=|:|to)?\s*(-?\d+(?:\.\d+)?)"], segment, np.nan),
-            "rpm": _extract_number([r"\brpm\s*(?:is|=|:|to)?\s*(-?\d+(?:\.\d+)?)"], segment, 1480.0),
+            "temperature": _extract_number([_reading_pattern(r"temp(?:erature)?")], segment, np.nan),
+            "vibration": _extract_number([_reading_pattern(r"vib(?:ration)?")], segment, np.nan),
+            "current": _extract_number([_reading_pattern(r"current")], segment, np.nan),
+            "pressure": _extract_number([_reading_pattern(r"pressure")], segment, np.nan),
+            "rpm": _extract_number([_reading_pattern(r"rpm")], segment, 1480.0),
             "alarm_count": _extract_number(
                 [
-                    r"\balarm\s*count\s*(?:is|=|:|to)?\s*(-?\d+(?:\.\d+)?)",
-                    r"\balarms?\s*(?:is|=|:|to)?\s*(-?\d+(?:\.\d+)?)",
+                    _reading_pattern(r"alarm\s*count"),
+                    _reading_pattern(r"alarms?"),
                 ],
                 segment,
                 0.0,
             ),
-            "delay_hours": _extract_number([r"\bdelay(?:\s*hours)?\s*(?:is|=|:|to)?\s*(-?\d+(?:\.\d+)?)"], segment, 0.0),
-            "spare_lead_time_days": _extract_number([r"\blead\s*time(?:\s*days)?\s*(?:is|=|:|to)?\s*(-?\d+(?:\.\d+)?)"], segment, 0.0),
+            "delay_hours": _extract_number([_reading_pattern(r"delay(?:\s*hours)?")], segment, 0.0),
+            "spare_lead_time_days": _extract_number([_reading_pattern(r"lead\s*time(?:\s*days)?")], segment, 0.0),
+            "operator_notes": _extract_operator_notes(segment),
             "created_at": now,
             "updated_at": now,
             "source_query": str(query),
@@ -419,22 +467,25 @@ def parse_dynamic_asset_updates(query: str) -> list[dict]:
     updates: list[dict] = []
     now = datetime.now().isoformat(timespec="seconds")
     for asset_id, segment in _segment_by_asset_id(str(query)):
-        fields: dict[str, float] = {}
+        fields: dict[str, Any] = {}
         patterns = {
-            "temperature": [r"\btemp(?:erature)?\s*(?:is|=|:|to|now|increased to|decreased to)?\s*(-?\d+(?:\.\d+)?)"],
-            "vibration": [r"\bvib(?:ration)?\s*(?:is|=|:|to|now|increased to|decreased to)?\s*(-?\d+(?:\.\d+)?)"],
-            "current": [r"\bcurrent\s*(?:is|=|:|to|now|increased to|decreased to)?\s*(-?\d+(?:\.\d+)?)"],
-            "pressure": [r"\bpressure\s*(?:is|=|:|to|now|increased to|decreased to)?\s*(-?\d+(?:\.\d+)?)"],
-            "rpm": [r"\brpm\s*(?:is|=|:|to|now|increased to|decreased to)?\s*(-?\d+(?:\.\d+)?)"],
+            "temperature": [_reading_pattern(r"temp(?:erature)?")],
+            "vibration": [_reading_pattern(r"vib(?:ration)?")],
+            "current": [_reading_pattern(r"current")],
+            "pressure": [_reading_pattern(r"pressure")],
+            "rpm": [_reading_pattern(r"rpm")],
             "alarm_count": [
-                r"\balarm\s*count\s*(?:is|=|:|to|now|increased to|decreased to)?\s*(-?\d+(?:\.\d+)?)",
-                r"\balarms?\s*(?:is|=|:|to|now|increased to|decreased to)?\s*(-?\d+(?:\.\d+)?)",
+                _reading_pattern(r"alarm\s*count"),
+                _reading_pattern(r"alarms?"),
             ],
         }
         for field, pats in patterns.items():
             value = _extract_number(pats, segment, None)
             if value is not None:
                 fields[field] = value
+        note = _extract_operator_notes(segment)
+        if note:
+            fields["operator_notes"] = note
         if fields:
             updates.append({"asset_id": asset_id, "fields": fields, "updated_at": now, "source_query": str(query)})
     return updates
@@ -491,6 +542,13 @@ def update_dynamic_assets_from_query(query: str) -> dict:
         changed_fields: list[str] = []
         for field, value in update["fields"].items():
             if field in DYNAMIC_ASSET_COLUMNS:
+                if field == "operator_notes":
+                    old_note = _clean_text(current.at[row_idx, field], "")
+                    new_note = _clean_text(value, "")
+                    if old_note and new_note and new_note.lower() not in old_note.lower():
+                        value = f"{old_note}; {new_note}"
+                    elif old_note and not new_note:
+                        value = old_note
                 current.at[row_idx, field] = value
                 changed_fields.append(field)
         current.at[row_idx, "updated_at"] = now
@@ -547,6 +605,8 @@ def score_dynamic_asset(row: pd.Series | dict) -> dict:
     raw_pressure = _num(r.get("pressure"), np.nan)
     raw_rpm = _num(r.get("rpm"), 1480.0)
     raw_alarms = _num(r.get("alarm_count"), 0.0)
+    operator_notes = _clean_text(r.get("operator_notes"), "")
+    notes = operator_notes.lower()
 
     temp = 0.0 if np.isnan(raw_temp) else raw_temp
     vib = 0.0 if np.isnan(raw_vib) else raw_vib
@@ -610,6 +670,17 @@ def score_dynamic_asset(row: pd.Series | dict) -> dict:
         score += 8
     if "descaler" in typ and pressure <= 6:
         score += 10
+    if any(term in notes for term in ["cavitation", "suction noise"]) and any(term in typ for term in ["pump", "descaler"]):
+        score += 25
+        score = max(score, 58)
+    if any(term in notes for term in ["loud noise", "abnormal noise", "bearing noise", "rubbing", "chatter"]):
+        score += 10
+        score = max(score, 45)
+    if any(term in notes for term in ["leak", "oil leak", "hydraulic leak"]):
+        score += 15
+    if any(term in notes for term in ["smoke", "sparking", "burning smell"]):
+        score += 30
+        score = max(score, 75)
 
     score = float(np.clip(score, 0, 100))
     if score >= 75:
@@ -645,12 +716,14 @@ def score_dynamic_asset(row: pd.Series | dict) -> dict:
         "pressure": raw_pressure,
         "rpm": rpm,
         "alarm_count": int(alarms),
+        "operator_notes": operator_notes,
         "temperature_for_scoring": temp,
         "vibration_for_scoring": vib,
         "current_for_scoring": current,
         "pressure_for_scoring": pressure,
         "missing_readings": ", ".join(missing),
         "provisional_scoring_note": "Missing readings held as unknown; neutral defaults used only for provisional risk scoring." if missing else "",
+        "qualitative_risk_note": "Operator/field symptom used as risk override evidence." if operator_notes else "",
         "anomaly_score": round(score / 100, 4),
         "is_anomaly": int(score >= 55),
         "failure_risk": round(score / 100, 4),

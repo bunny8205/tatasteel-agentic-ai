@@ -314,6 +314,8 @@ class MaintenanceWizard:
             "is_dynamic": int(is_dynamic),
             "missing_readings": r.get("missing_readings", ""),
             "provisional_scoring_note": r.get("provisional_scoring_note", ""),
+            "operator_notes": r.get("operator_notes", ""),
+            "qualitative_risk_note": r.get("qualitative_risk_note", ""),
         }
 
     def get_spares(self, asset_id: str) -> list[dict]:
@@ -395,6 +397,7 @@ class MaintenanceWizard:
         alarms = safe_float(sensor.get("alarm_count_latest"))
         anomalies = safe_float(sensor.get("anomaly_events_24h"))
         delay_hours = safe_float(delay.get("delay_hours", 0))
+        notes = str(sensor.get("operator_notes") or "").lower()
 
         if "gearbox" in typ:
             if vib >= 7:
@@ -438,6 +441,12 @@ class MaintenanceWizard:
         if "blast furnace" in (typ + " " + str(sensor.get("area", "")).lower()):
             if temp >= 80 and vib >= 6.5:
                 reasons.append("Blast furnace critical blower/fan high temperature plus vibration safety override: +20")
+        if "cavitation" in notes and ("pump" in typ or "descaler" in typ):
+            reasons.append("Operator-reported cavitation noise on pump/descaler: qualitative risk floor keeps priority elevated")
+        if any(term in notes for term in ["loud noise", "abnormal noise", "bearing noise", "rubbing", "chatter"]):
+            reasons.append("Operator-reported abnormal noise: qualitative risk uplift")
+        if any(term in notes for term in ["smoke", "sparking", "burning smell"]):
+            reasons.append("Operator-reported smoke/sparking/burning smell: safety-critical risk override")
         if not any(key in typ for key in ["gearbox", "motor", "pump", "hydraulic", "blower", "fan", "compressor"]):
             if temp >= 80:
                 reasons.append("Generic equipment temperature >= 80 deg C: +20")
@@ -731,6 +740,11 @@ class MaintenanceWizard:
             if missing
             else ""
         )
+        qualitative = (
+            f" Operator notes: {sensor.get('operator_notes')}. {sensor.get('qualitative_risk_note')}"
+            if sensor.get("operator_notes")
+            else ""
+        )
         return [
             {
                 "source": "dynamic_assets.csv",
@@ -743,7 +757,7 @@ class MaintenanceWizard:
                     f"Vibration: {_display_value(sensor.get('vibration_latest'))}. Current: {_display_value(sensor.get('current_latest'))}. "
                     f"Pressure: {_display_value(sensor.get('pressure_latest'))}. Alarm count: {sensor.get('alarm_count_latest')}. "
                     f"Risk band: {sensor.get('risk_band')}. Hybrid health score: {sensor.get('hybrid_health_score')}. "
-                    f"Estimated RUL days: {sensor.get('estimated_rul_days')}.{uncertainty}"
+                    f"Estimated RUL days: {sensor.get('estimated_rul_days')}.{uncertainty}{qualitative}"
                 ),
             }
         ]
@@ -839,8 +853,10 @@ class MaintenanceWizard:
                         f"- Current: {_display_value(row.get('current'), ' A')}",
                         f"- Pressure: {_display_value(row.get('pressure'), ' bar')}",
                         f"- Alarm count: {row.get('alarm_count')}",
+                        f"- Operator notes: {row.get('operator_notes') or 'none'}",
                         f"- Missing readings: {row.get('missing_readings') or 'none'}",
                         f"- Scoring note: {row.get('provisional_scoring_note') or 'all required readings provided'}",
+                        f"- Qualitative risk note: {row.get('qualitative_risk_note') or 'none'}",
                         f"- Operational rule score: {row.get('operational_rule_score')}/100",
                         f"- Initial priority: {row.get('priority')}/{row.get('risk_band')}",
                         f"- Estimated RUL: {row.get('estimated_rul_days')} days",
@@ -930,6 +946,7 @@ class MaintenanceWizard:
         self.session_memory["last_new_asset_id"] = last_asset
 
         comparisons = []
+        interpretations = []
         for row in history_rows:
             previous = json.loads(row["previous_record"])
             new = json.loads(row["new_record"])
@@ -939,6 +956,30 @@ class MaintenanceWizard:
                 previous.get("priority") != new.get("priority")
                 or previous.get("risk_band") != new.get("risk_band")
             )
+            previous_score = safe_float(previous.get("hybrid_health_score"))
+            new_score = safe_float(new.get("hybrid_health_score"))
+            if new_score < previous_score and not priority_changed and new.get("operator_notes"):
+                interpretations.append(
+                    f"- {new.get('asset_id')}: numeric score reduced from {previous_score} to {new_score}, "
+                    f"but priority stays {new.get('priority')}/{new.get('risk_band')} because operator-reported symptoms remain active evidence."
+                )
+            elif new_score < previous_score:
+                interpretations.append(
+                    f"- {new.get('asset_id')}: numeric score reduced from {previous_score} to {new_score}; priority is now {new.get('priority')}/{new.get('risk_band')}."
+                )
+            elif new_score > previous_score:
+                interpretations.append(
+                    f"- {new.get('asset_id')}: numeric score increased from {previous_score} to {new_score}; priority is now {new.get('priority')}/{new.get('risk_band')}."
+                )
+            elif new.get("operator_notes"):
+                interpretations.append(
+                    f"- {new.get('asset_id')}: numeric score stayed at {new_score}; priority remains {new.get('priority')}/{new.get('risk_band')} "
+                    "because active operator-reported symptoms remain risk evidence."
+                )
+            else:
+                interpretations.append(
+                    f"- {new.get('asset_id')}: numeric score stayed at {new_score}; priority remains {new.get('priority')}/{new.get('risk_band')}."
+                )
             comparisons.append(
                 "\n".join(
                     [
@@ -952,6 +993,8 @@ class MaintenanceWizard:
                         f"- Current: {_display_value(previous.get('current'), ' A')} -> {_display_value(new.get('current'), ' A')}",
                         f"- Pressure: {_display_value(previous.get('pressure'), ' bar')} -> {_display_value(new.get('pressure'), ' bar')}",
                         f"- Alarm count: {previous.get('alarm_count')} -> {new.get('alarm_count')}",
+                        f"- Operator notes: {previous.get('operator_notes') or 'none'} -> {new.get('operator_notes') or 'none'}",
+                        f"- Qualitative risk note: {new.get('qualitative_risk_note') or 'none'}",
                     ]
                 )
             )
@@ -998,6 +1041,9 @@ class MaintenanceWizard:
 
 **What changed**
 {chr(10).join(["", *comparisons])}
+
+**Risk Interpretation**
+{chr(10).join(interpretations)}
 
 **Agentic Control Loop**
 - Objective: {query}
@@ -1104,10 +1150,11 @@ class MaintenanceWizard:
 - Current: {_display_value(previous.get("current"), " A")} -> {_display_value(new.get("current"), " A")}
 - Pressure: {_display_value(previous.get("pressure"), " bar")} -> {_display_value(new.get("pressure"), " bar")}
 - Alarm count: {previous.get("alarm_count")} -> {new.get("alarm_count")}
+- Operator notes: {previous.get("operator_notes") or "none"} -> {new.get("operator_notes") or "none"}
 
 **Reason**
 - The agent compared the previous stored dynamic state against the latest update event in memory.
-- Higher vibration, current, temperature, pressure deviation, alarm count, and criticality increase the operational rule score and may change priority.
+- Higher vibration, current, temperature, pressure deviation, alarm count, criticality, and operator-reported symptoms increase the operational rule score and may change priority.
 """.strip()
         priority = {
             "priority": new.get("priority"),

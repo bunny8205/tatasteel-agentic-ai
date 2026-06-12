@@ -20,10 +20,14 @@ from .dynamic_assets import (
     is_asset_ingestion_query,
     is_asset_update_query,
     is_priority_change_query,
+    is_rule_apply_query,
+    is_rule_ingestion_query,
     latest_dynamic_asset_change,
     load_dynamic_assets,
+    load_dynamic_rules,
     parse_dynamic_assets,
     query_mentions_new_asset_reference,
+    remember_dynamic_rule,
     score_dynamic_assets,
     update_dynamic_assets_from_query,
     upsert_dynamic_assets,
@@ -316,6 +320,12 @@ class MaintenanceWizard:
             "provisional_scoring_note": r.get("provisional_scoring_note", ""),
             "operator_notes": r.get("operator_notes", ""),
             "qualitative_risk_note": r.get("qualitative_risk_note", ""),
+            "base_priority": r.get("base_priority", r.get("priority")),
+            "base_risk_band": r.get("base_risk_band", r.get("risk_band")),
+            "base_hybrid_health_score": round(safe_float(r.get("base_hybrid_health_score", r.get("hybrid_health_score"))), 2),
+            "applied_rules": r.get("applied_rules", []) if isinstance(r.get("applied_rules", []), list) else [],
+            "applied_rule_count": int(safe_float(r.get("applied_rule_count", 0))),
+            "dynamic_rule_note": r.get("dynamic_rule_note", ""),
         }
 
     def get_spares(self, asset_id: str) -> list[dict]:
@@ -475,6 +485,11 @@ class MaintenanceWizard:
             reasons.append(f"Historical delay impact {delay_hours} hours: +{min(delay_hours * 2.0, 12):.1f}")
         if any(safe_float(s.get("stock_qty", 0)) <= 0 and safe_float(s.get("lead_time_days", 0)) >= 7 for s in spares):
             reasons.append("Critical spare unavailable with high lead time: priority uplift")
+        for rule in sensor.get("applied_rules") or []:
+            rule_id = rule.get("rule_id", "remembered rule")
+            condition = str(rule.get("condition_text", "")).strip()
+            priority = rule.get("priority_override") or "policy"
+            reasons.append(f"Remembered safety/SOP rule {rule_id} applied: {priority}. {condition}")
         return reasons or ["No major rule trigger; monitor based on trend and ML signal."]
 
     def detect_anomaly(self, asset_id: str) -> dict:
@@ -745,6 +760,13 @@ class MaintenanceWizard:
             if sensor.get("operator_notes")
             else ""
         )
+        rule_text = ""
+        if sensor.get("applied_rules"):
+            summaries = [
+                f"{rule.get('rule_id')}: {rule.get('condition_text')}"
+                for rule in sensor.get("applied_rules", [])
+            ]
+            rule_text = " Remembered rules applied: " + " | ".join(summaries)
         return [
             {
                 "source": "dynamic_assets.csv",
@@ -757,7 +779,7 @@ class MaintenanceWizard:
                     f"Vibration: {_display_value(sensor.get('vibration_latest'))}. Current: {_display_value(sensor.get('current_latest'))}. "
                     f"Pressure: {_display_value(sensor.get('pressure_latest'))}. Alarm count: {sensor.get('alarm_count_latest')}. "
                     f"Risk band: {sensor.get('risk_band')}. Hybrid health score: {sensor.get('hybrid_health_score')}. "
-                    f"Estimated RUL days: {sensor.get('estimated_rul_days')}.{uncertainty}{qualitative}"
+                    f"Estimated RUL days: {sensor.get('estimated_rul_days')}.{uncertainty}{qualitative}{rule_text}"
                 ),
             }
         ]
@@ -916,8 +938,9 @@ class MaintenanceWizard:
             "llm_used": False,
         }
 
-    def asset_update_report(self, query: str, user_id: str = "demo_user") -> dict:
-        result = update_dynamic_assets_from_query(query)
+    def asset_update_report(self, query: str, user_id: str = "demo_user", asset_id: str | None = None) -> dict:
+        target = asset_id or self._infer_asset_from_query(query) or self.session_memory.get("last_new_asset_id")
+        result = update_dynamic_assets_from_query(query, fallback_asset_id=target)
         updated = result.get("updated", [])
         missing = result.get("missing", [])
         history_rows = result.get("history", [])
@@ -925,18 +948,19 @@ class MaintenanceWizard:
         if not updated:
             answer = (
                 "I detected an asset update request, but I could not apply it to dynamic memory. "
+                f"Resolved asset: {target or 'none'}. "
                 f"Missing or unknown assets: {', '.join(missing) if missing else 'none parsed'}."
             )
             return {
                 "mode": "asset_update",
-                "asset_id": None,
+                "asset_id": target,
                 "intent": "asset_update",
                 "answer": answer,
                 "final_answer": answer,
                 "agent_plan": [],
                 "tool_calls": [],
                 "verifier_checks": [{"check": "Dynamic asset update applied", "status": "review", "detail": answer}],
-                "decision_packet": {"mode": "asset_update", "status": "not_applied", "objective": query},
+                "decision_packet": {"mode": "asset_update", "status": "not_applied", "objective": query, "resolved_asset": target},
                 "alert_report": "",
             }
 
@@ -980,6 +1004,14 @@ class MaintenanceWizard:
                 interpretations.append(
                     f"- {new.get('asset_id')}: numeric score stayed at {new_score}; priority remains {new.get('priority')}/{new.get('risk_band')}."
                 )
+            if new.get("applied_rules"):
+                interpretations.append(
+                    f"- {new.get('asset_id')}: {len(new.get('applied_rules', []))} remembered safety/SOP rule(s) were applied during re-scoring."
+                )
+            applied_rule_lines = [
+                f"  - {rule.get('rule_id')}: {rule.get('condition_text')}"
+                for rule in new.get("applied_rules", [])
+            ]
             comparisons.append(
                 "\n".join(
                     [
@@ -995,6 +1027,8 @@ class MaintenanceWizard:
                         f"- Alarm count: {previous.get('alarm_count')} -> {new.get('alarm_count')}",
                         f"- Operator notes: {previous.get('operator_notes') or 'none'} -> {new.get('operator_notes') or 'none'}",
                         f"- Qualitative risk note: {new.get('qualitative_risk_note') or 'none'}",
+                        f"- Remembered rules applied: {len(new.get('applied_rules', []))}",
+                        *applied_rule_lines,
                     ]
                 )
             )
@@ -1085,6 +1119,213 @@ class MaintenanceWizard:
             "answer": answer,
             "final_answer": answer,
             "alert_report": f"Dynamic asset update applied for {', '.join(updated_ids)}.",
+            "llm_used": False,
+        }
+
+    def rule_ingestion_report(self, query: str, user_id: str = "demo_user") -> dict:
+        rule = remember_dynamic_rule(query)
+        self.session_memory["last_rule_id"] = rule["rule_id"]
+        rules = load_dynamic_rules()
+        agent_plan = [
+            {"step": 1, "agent": "Memory Agent", "task": "Detect safety/SOP rule ingestion intent", "target": "dynamic rule memory", "status": "complete"},
+            {"step": 2, "agent": "Policy Agent", "task": "Extract equipment scope, condition text, and priority override", "target": rule["rule_id"], "status": "complete"},
+            {"step": 3, "agent": "State Agent", "task": "Persist rule for future scoring, ranking, diagnosis, alerts, and follow-ups", "target": "dynamic_rules.csv", "status": "complete"},
+            {"step": 4, "agent": "Verifier Agent", "task": "Confirm rule exists in active rule memory", "target": rule["rule_id"], "status": "complete"},
+        ]
+        tool_calls = [
+            {"tool": "universal_command_parser", "agent": "Memory Agent", "input": query, "output": "RULE_INGEST", "status": "success"},
+            {"tool": "dynamic_rule_parser", "agent": "Policy Agent", "input": query, "output": f"{rule['priority_override'] or 'policy'} override scoped by {rule['equipment_pattern']}", "status": "success"},
+            {"tool": "dynamic_rule_store", "agent": "State Agent", "input": "dynamic_rules.csv", "output": f"{len(rules)} active/remembered rule row(s)", "status": "success"},
+        ]
+        verifier_checks = [
+            {"check": "Rule stored", "status": "pass", "detail": rule["rule_id"]},
+            {"check": "Rule applied by scorer", "status": "pass", "detail": "score_dynamic_assets calls dynamic rule engine"},
+            {"check": "Diagnosis/ranking will use rule", "status": "pass", "detail": "asset_health_table merges rule-adjusted dynamic state"},
+        ]
+        decision_packet = {
+            "mode": "rule_ingestion",
+            "intent": "dynamic_safety_rule_memory",
+            "rule_id": rule["rule_id"],
+            "rule_type": rule["rule_type"],
+            "equipment_pattern": rule["equipment_pattern"],
+            "area_pattern": rule["area_pattern"],
+            "priority_override": rule["priority_override"],
+            "risk_override": rule["risk_override"],
+            "next_system_action": "apply_dynamic_rules_during_all_future_scoring",
+        }
+        answer = f"""
+**Safety/SOP Rule Remembered**
+
+Rule `{rule["rule_id"]}` has been stored and will be applied to future diagnosis, ranking, RUL, alerting, and follow-up reasoning.
+
+**Parsed Rule**
+- Rule type: {rule["rule_type"]}
+- Equipment scope: {rule["equipment_pattern"]}
+- Area scope: {rule["area_pattern"]}
+- Priority override: {rule["priority_override"] or "none"}
+- Risk override: {rule["risk_override"] or "none"}
+- Condition: {rule["condition_text"]}
+
+**Agentic Control Loop**
+- Objective: {query}
+- Operating mode: dynamic rule ingestion
+- Decision policy: memory-changing commands are handled before diagnosis.
+
+**Autonomous Execution Plan**
+{chr(10).join([f"- Step {p['step']} | {p['agent']}: {p['task']} [{p['status']}]" for p in agent_plan])}
+
+**Tool Calls Executed**
+{chr(10).join([f"- {t['agent']} -> `{t['tool']}` | input: {t['input']} | output: {t['output']} | {t['status']}" for t in tool_calls])}
+
+**Verifier Checks**
+{chr(10).join([f"- {v['check']}: {v['status'].upper()} ({v['detail']})" for v in verifier_checks])}
+
+**Final Decision Packet**
+- Mode: rule_ingestion
+- Rule ID: {rule["rule_id"]}
+- Next system action: apply_dynamic_rules_during_all_future_scoring
+""".strip()
+        priority = {"priority": "MEMORY", "risk_level": "RULE_INGESTION", "urgency": "Rule remembered", "priority_score": 0}
+        self.write_logbook(query, self.session_memory.get("last_asset_id", "RULE_MEMORY"), priority, answer)
+        return {
+            "mode": "rule_ingestion",
+            "asset_id": self.session_memory.get("last_asset_id"),
+            "intent": "dynamic_safety_rule_memory",
+            "rule": rule,
+            "risk_priority": priority,
+            "priority": "Rule remembered",
+            "agent_plan": agent_plan,
+            "tool_calls": tool_calls,
+            "verifier_checks": verifier_checks,
+            "decision_packet": decision_packet,
+            "answer": answer,
+            "final_answer": answer,
+            "alert_report": f"Safety/SOP rule remembered: {rule['rule_id']}.",
+            "llm_used": False,
+        }
+
+    def rule_apply_report(self, query: str, asset_id: str | None = None, user_id: str = "demo_user") -> dict:
+        target = asset_id or self._infer_asset_from_query(query) or self.session_memory.get("last_asset_id")
+        if not target:
+            answer = "I can apply remembered rules, but I need an asset ID or a remembered asset reference."
+            return {
+                "mode": "rule_apply",
+                "asset_id": None,
+                "intent": "dynamic_rule_application",
+                "answer": answer,
+                "final_answer": answer,
+                "agent_plan": [],
+                "tool_calls": [],
+                "verifier_checks": [{"check": "Asset resolved for rule application", "status": "review", "detail": "No asset available"}],
+                "decision_packet": {"mode": "rule_apply", "status": "needs_asset_id", "objective": query},
+                "alert_report": "",
+            }
+
+        sensor = self.get_latest_sensor_summary(target)
+        spares = self.get_spares(target)
+        delay = self.get_delay(target)
+        priority = self.prioritize_action(sensor, spares, delay)
+        rules = sensor.get("applied_rules") or []
+        base_priority = f"{sensor.get('base_priority')}/{sensor.get('base_risk_band')}"
+        final_priority = f"{priority.get('priority')}/{priority.get('risk_level')}"
+        changed = base_priority != final_priority
+        rule_lines = (
+            "\n".join(
+                f"- {rule.get('rule_id')}: {rule.get('condition_text')} -> {rule.get('priority_override') or 'policy'}"
+                for rule in rules
+            )
+            if rules
+            else "- No remembered rule matched this asset and current readings."
+        )
+        agent_plan = [
+            {"step": 1, "agent": "Triage Agent", "task": "Resolve asset for remembered rule application", "target": target, "status": "complete"},
+            {"step": 2, "agent": "Policy Agent", "task": "Load active dynamic safety/SOP rules", "target": "dynamic_rules.csv", "status": "complete"},
+            {"step": 3, "agent": "Risk Agent", "task": "Apply matching rules inside dynamic scoring", "target": target, "status": "complete"},
+            {"step": 4, "agent": "Verifier Agent", "task": "Compare base score against final rule-adjusted priority", "target": target, "status": "complete"},
+        ]
+        tool_calls = [
+            {"tool": "asset_resolver", "agent": "Triage Agent", "input": query, "output": target, "status": "success"},
+            {"tool": "dynamic_rule_loader", "agent": "Policy Agent", "input": "dynamic_rules.csv", "output": f"{len(load_dynamic_rules())} remembered rule row(s)", "status": "success"},
+            {"tool": "dynamic_rule_engine", "agent": "Risk Agent", "input": target, "output": f"{len(rules)} rule(s) applied", "status": "success"},
+        ]
+        verifier_checks = [
+            {"check": "Asset resolved", "status": "pass", "detail": target},
+            {"check": "Rule application evaluated", "status": "pass", "detail": f"{len(rules)} applied rule(s)"},
+            {"check": "Base vs final priority compared", "status": "pass", "detail": f"{base_priority} -> {final_priority}"},
+        ]
+        decision_packet = {
+            "mode": "rule_apply",
+            "intent": "dynamic_rule_application",
+            "selected_asset": target,
+            "applied_rule_count": len(rules),
+            "priority_changed_by_rule": changed,
+            "base_priority": base_priority,
+            "final_priority": final_priority,
+            "hybrid_health_score": sensor.get("hybrid_health_score"),
+            "estimated_rul_days": sensor.get("estimated_rul_days"),
+            "next_system_action": "create_or_update_work_order_if_p1_p2" if priority.get("priority") in {"P1", "P2"} else "monitor_and_schedule",
+        }
+        answer = f"""
+**Remembered Rule Application For {target}**
+
+**Result**
+- Applied rules: {len(rules)}
+- Base priority before remembered rules: {base_priority}, score {sensor.get("base_hybrid_health_score")}/100
+- Final priority after remembered rules and plant policy: {final_priority}, score {sensor.get("hybrid_health_score")}/100
+- Priority changed by remembered rule: {"YES" if changed else "NO"}
+
+**Rules Evaluated**
+{rule_lines}
+
+**Current Asset State**
+- Asset type: {sensor.get("asset_type")}
+- Area: {sensor.get("area")}
+- Temperature: {_display_value(sensor.get("temperature_latest"), " C")}
+- Vibration: {_display_value(sensor.get("vibration_latest"), " mm/s")}
+- Current: {_display_value(sensor.get("current_latest"), " A")}
+- Pressure: {_display_value(sensor.get("pressure_latest"), " bar")}
+- Alarm count: {sensor.get("alarm_count_latest")}
+- RUL: {sensor.get("estimated_rul_days")} days
+
+**Agentic Control Loop**
+- Objective: {query}
+- Operating mode: dynamic safety rule application
+- Decision policy: rules are applied by the scorer before diagnosis/ranking output.
+
+**Autonomous Execution Plan**
+{chr(10).join([f"- Step {p['step']} | {p['agent']}: {p['task']} [{p['status']}]" for p in agent_plan])}
+
+**Tool Calls Executed**
+{chr(10).join([f"- {t['agent']} -> `{t['tool']}` | input: {t['input']} | output: {t['output']} | {t['status']}" for t in tool_calls])}
+
+**Verifier Checks**
+{chr(10).join([f"- {v['check']}: {v['status'].upper()} ({v['detail']})" for v in verifier_checks])}
+
+**Final Decision Packet**
+- Mode: rule_apply
+- Selected asset: {target}
+- Applied rule count: {len(rules)}
+- Next system action: {decision_packet["next_system_action"]}
+""".strip()
+        self.session_memory["last_asset_id"] = target
+        if self._is_dynamic_asset(target):
+            self.session_memory["last_new_asset_id"] = target
+        self.write_logbook(query, target, priority, answer)
+        return {
+            "mode": "rule_apply",
+            "asset_id": target,
+            "intent": "dynamic_rule_application",
+            "applied_rules": rules,
+            "sensor_summary": sensor,
+            "risk_priority": priority,
+            "priority": final_priority,
+            "agent_plan": agent_plan,
+            "tool_calls": tool_calls,
+            "verifier_checks": verifier_checks,
+            "decision_packet": decision_packet,
+            "answer": answer,
+            "final_answer": answer,
+            "alert_report": f"Remembered rules evaluated for {target}: {len(rules)} applied.",
             "llm_used": False,
         }
 
@@ -1197,8 +1438,12 @@ class MaintenanceWizard:
     def chat(self, query: str, user_id: str = "demo_user") -> dict:
         self.ensure_ready()
         self.session_memory["user_id"] = user_id
+        if is_rule_ingestion_query(query):
+            return self.rule_ingestion_report(query, user_id=user_id)
+        if is_rule_apply_query(query):
+            return self.rule_apply_report(query, asset_id=self._infer_asset_from_query(query), user_id=user_id)
         if is_asset_update_query(query):
-            return self.asset_update_report(query, user_id=user_id)
+            return self.asset_update_report(query, asset_id=self._infer_asset_from_query(query), user_id=user_id)
         if is_priority_change_query(query):
             return self.dynamic_priority_change_report(query, user_id=user_id)
         if is_asset_ingestion_query(query):
@@ -1473,6 +1718,7 @@ class MaintenanceWizard:
 - ML failure risk: {sensor.get("ml_failure_risk_latest")}
 - Operational rule score: {sensor.get("operational_rule_score")}/100
 - Hybrid health score: {sensor.get("hybrid_health_score")}/100
+- Remembered rules applied: {sensor.get("applied_rule_count", 0)}
 - RUL / remaining useful life: {sensor.get("estimated_rul_days")} days
 
 **Diagnosis**

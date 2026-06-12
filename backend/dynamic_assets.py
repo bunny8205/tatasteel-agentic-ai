@@ -16,6 +16,8 @@ from .config import DATA_DIR
 
 DYNAMIC_ASSET_PATH = DATA_DIR / "dynamic_assets.csv"
 DYNAMIC_ASSET_HISTORY_PATH = DATA_DIR / "dynamic_asset_history.csv"
+DYNAMIC_RULE_PATH = DATA_DIR / "dynamic_rules.csv"
+DYNAMIC_RULE_APPLICATION_PATH = DATA_DIR / "dynamic_rule_applications.csv"
 
 DYNAMIC_ASSET_COLUMNS = [
     "asset_id",
@@ -51,6 +53,33 @@ DYNAMIC_HISTORY_COLUMNS = [
     "source_query",
     "previous_record",
     "new_record",
+]
+
+DYNAMIC_RULE_COLUMNS = [
+    "rule_id",
+    "timestamp",
+    "rule_type",
+    "equipment_pattern",
+    "area_pattern",
+    "condition_text",
+    "priority_override",
+    "risk_override",
+    "source_text",
+    "active",
+]
+
+DYNAMIC_RULE_APPLICATION_COLUMNS = [
+    "event_id",
+    "timestamp",
+    "rule_id",
+    "asset_id",
+    "base_priority",
+    "final_priority",
+    "base_risk_band",
+    "final_risk_band",
+    "base_score",
+    "final_score",
+    "source",
 ]
 
 NUMERIC_FIELDS = [
@@ -220,6 +249,46 @@ def append_dynamic_asset_history(rows: list[dict]) -> pd.DataFrame:
     return merged
 
 
+def load_dynamic_rules() -> pd.DataFrame:
+    if DYNAMIC_RULE_PATH.exists():
+        df = pd.read_csv(DYNAMIC_RULE_PATH)
+        for col in DYNAMIC_RULE_COLUMNS:
+            if col not in df.columns:
+                df[col] = "" if col != "active" else True
+        if "active" in df.columns:
+            df["active"] = df["active"].apply(lambda value: str(value).strip().lower() not in {"false", "0", "no", ""})
+        return df[DYNAMIC_RULE_COLUMNS].copy()
+    return pd.DataFrame(columns=DYNAMIC_RULE_COLUMNS)
+
+
+def save_dynamic_rules(df: pd.DataFrame) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    for col in DYNAMIC_RULE_COLUMNS:
+        if col not in df.columns:
+            df[col] = "" if col != "active" else True
+    out = df[DYNAMIC_RULE_COLUMNS].copy()
+    out.to_csv(DYNAMIC_RULE_PATH, index=False)
+
+
+def append_dynamic_rule_application(rows: list[dict]) -> pd.DataFrame:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    if DYNAMIC_RULE_APPLICATION_PATH.exists():
+        current = pd.read_csv(DYNAMIC_RULE_APPLICATION_PATH)
+    else:
+        current = pd.DataFrame(columns=DYNAMIC_RULE_APPLICATION_COLUMNS)
+    if not rows:
+        return current
+    incoming = pd.DataFrame(rows)
+    for col in DYNAMIC_RULE_APPLICATION_COLUMNS:
+        if col not in incoming.columns:
+            incoming[col] = ""
+        if col not in current.columns:
+            current[col] = ""
+    merged = pd.concat([current, incoming[DYNAMIC_RULE_APPLICATION_COLUMNS]], ignore_index=True, sort=False)
+    merged.to_csv(DYNAMIC_RULE_APPLICATION_PATH, index=False)
+    return merged
+
+
 def latest_dynamic_asset_change(asset_id: str) -> dict | None:
     history = load_dynamic_asset_history()
     if history.empty:
@@ -276,11 +345,17 @@ def is_asset_ingestion_query(query: str) -> bool:
 def is_asset_update_query(query: str) -> bool:
     if is_asset_ingestion_query(query):
         return False
+    if is_rule_ingestion_query(query):
+        return False
     q = str(query).lower()
-    has_asset_id = bool(extract_asset_ids(query))
     update_terms = [
         "update",
         "change",
+        "changed",
+        "reduced",
+        "increased",
+        "improved",
+        "dropped",
         " set ",
         "new reading",
         "new readings",
@@ -292,8 +367,29 @@ def is_asset_update_query(query: str) -> bool:
         "decreased to",
         "now ",
     ]
-    reading_terms = ["temperature", "temp", "vibration", "vib", "current", "pressure", "alarm", "rpm"]
-    return has_asset_id and any(term in q for term in update_terms) and any(term in q for term in reading_terms)
+    has_update_language = any(term in q for term in update_terms)
+    has_reference_language = any(term in q for term in ["update it", "update that", "update the same asset", "now update it"])
+    return (has_update_language or has_reference_language) and bool(extract_reading_fields(query))
+
+
+def is_rule_ingestion_query(query: str) -> bool:
+    q = str(query).lower()
+    if is_rule_apply_query(query):
+        return False
+    memory_patterns = [
+        r"\bremember\b",
+        r"\bsave\b",
+        r"\bstore\b",
+        r"\blearn\b",
+        r"\bkeep this\b",
+    ]
+    rule_terms = ["rule", "safety rule", "sop rule", "policy", "override", "must be", "should trigger"]
+    return any(re.search(pattern, q) for pattern in memory_patterns) and any(term in q for term in rule_terms)
+
+
+def is_rule_apply_query(query: str) -> bool:
+    q = str(query).lower()
+    return "apply" in q and any(term in q for term in ["rule", "rules", "remembered rule", "remembered safety"])
 
 
 def is_priority_change_query(query: str) -> bool:
@@ -326,6 +422,30 @@ def query_mentions_new_asset_reference(query: str) -> bool:
             "added assets",
         ]
     )
+
+
+def extract_reading_fields(text: str) -> dict[str, Any]:
+    segment = str(text)
+    fields: dict[str, Any] = {}
+    patterns = {
+        "temperature": [_reading_pattern(r"temp(?:erature)?")],
+        "vibration": [_reading_pattern(r"vib(?:ration)?")],
+        "current": [_reading_pattern(r"current")],
+        "pressure": [_reading_pattern(r"pressure")],
+        "rpm": [_reading_pattern(r"rpm")],
+        "alarm_count": [
+            _reading_pattern(r"alarm\s*count"),
+            _reading_pattern(r"alarms?"),
+        ],
+    }
+    for field, pats in patterns.items():
+        value = _extract_number(pats, segment, None)
+        if value is not None:
+            fields[field] = value
+    note = _extract_operator_notes(segment)
+    if note:
+        fields["operator_notes"] = note
+    return fields
 
 
 def extract_asset_ids(text: str) -> list[str]:
@@ -463,29 +583,14 @@ def parse_dynamic_assets(query: str) -> list[dict]:
     return assets
 
 
-def parse_dynamic_asset_updates(query: str) -> list[dict]:
+def parse_dynamic_asset_updates(query: str, fallback_asset_id: str | None = None) -> list[dict]:
     updates: list[dict] = []
     now = datetime.now().isoformat(timespec="seconds")
-    for asset_id, segment in _segment_by_asset_id(str(query)):
-        fields: dict[str, Any] = {}
-        patterns = {
-            "temperature": [_reading_pattern(r"temp(?:erature)?")],
-            "vibration": [_reading_pattern(r"vib(?:ration)?")],
-            "current": [_reading_pattern(r"current")],
-            "pressure": [_reading_pattern(r"pressure")],
-            "rpm": [_reading_pattern(r"rpm")],
-            "alarm_count": [
-                _reading_pattern(r"alarm\s*count"),
-                _reading_pattern(r"alarms?"),
-            ],
-        }
-        for field, pats in patterns.items():
-            value = _extract_number(pats, segment, None)
-            if value is not None:
-                fields[field] = value
-        note = _extract_operator_notes(segment)
-        if note:
-            fields["operator_notes"] = note
+    segments = _segment_by_asset_id(str(query))
+    if not segments and fallback_asset_id:
+        segments = [(str(fallback_asset_id).upper(), str(query))]
+    for asset_id, segment in segments:
+        fields = extract_reading_fields(segment)
         if fields:
             updates.append({"asset_id": asset_id, "fields": fields, "updated_at": now, "source_query": str(query)})
     return updates
@@ -518,8 +623,8 @@ def upsert_dynamic_assets(assets: list[dict]) -> pd.DataFrame:
     return merged
 
 
-def update_dynamic_assets_from_query(query: str) -> dict:
-    updates = parse_dynamic_asset_updates(query)
+def update_dynamic_assets_from_query(query: str, fallback_asset_id: str | None = None) -> dict:
+    updates = parse_dynamic_asset_updates(query, fallback_asset_id=fallback_asset_id)
     current = load_dynamic_assets()
     if not updates:
         return {"updated": [], "missing": [], "history": []}
@@ -590,6 +695,203 @@ def criticality_score(criticality: Any) -> int:
     if c == "medium":
         return 1
     return 0
+
+
+def _make_rule_id() -> str:
+    return "RULE-" + uuid.uuid4().hex[:8].upper()
+
+
+def _infer_rule_equipment_pattern(text: str) -> str:
+    q = str(text).lower()
+    if "bof" in q and "gearbox" in q:
+        return r"bof.*gearbox|basic oxygen furnace.*gearbox|tilting gearbox"
+    if "blast furnace" in q and any(term in q for term in ["blower", "fan"]):
+        return r"blast furnace.*(blower|fan)|(blower|fan).*blast furnace"
+    if "descaler" in q and "pump" in q:
+        return r"descaler.*pump|descaling.*pump"
+    if "pump" in q:
+        return r"pump"
+    if "caster" in q or "mold oscillator" in q or "mould oscillator" in q:
+        return r"caster|mold oscillator|mould oscillator"
+    if "motor" in q:
+        return r"motor"
+    if "gearbox" in q:
+        return r"gearbox"
+    if any(term in q for term in ["blower", "fan", "compressor"]):
+        return r"blower|fan|compressor"
+    if "hydraulic" in q:
+        return r"hydraulic"
+    return r".*"
+
+
+def _infer_rule_area_pattern(text: str) -> str:
+    q = str(text).lower()
+    if "bof" in q or "basic oxygen furnace" in q:
+        return r"bof|basic oxygen furnace"
+    if "blast furnace" in q:
+        return r"blast furnace"
+    if "caster" in q:
+        return r"caster"
+    if "roughing mill" in q:
+        return r"roughing mill"
+    if "sinter" in q:
+        return r"sinter"
+    if "descal" in q:
+        return r"descal"
+    return r".*"
+
+
+def parse_dynamic_rule(text: str) -> dict:
+    q = str(text).lower()
+    priority_override = ""
+    if any(term in q for term in ["must be p1", "should be p1", "trigger p1", "priority p1", "make it p1"]):
+        priority_override = "P1"
+    elif any(term in q for term in ["must be p2", "should be p2", "trigger p2", "priority p2"]):
+        priority_override = "P2"
+
+    risk_override = ""
+    if priority_override == "P1":
+        risk_override = "CRITICAL"
+    elif priority_override == "P2":
+        risk_override = "HIGH"
+
+    return {
+        "rule_id": _make_rule_id(),
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "rule_type": "safety_override" if priority_override else "policy_rule",
+        "equipment_pattern": _infer_rule_equipment_pattern(text),
+        "area_pattern": _infer_rule_area_pattern(text),
+        "condition_text": str(text),
+        "priority_override": priority_override,
+        "risk_override": risk_override,
+        "source_text": str(text),
+        "active": True,
+    }
+
+
+def remember_dynamic_rule(text: str) -> dict:
+    rule = parse_dynamic_rule(text)
+    rules = load_dynamic_rules()
+    rules = pd.concat([rules, pd.DataFrame([rule])], ignore_index=True, sort=False)
+    save_dynamic_rules(rules)
+    return rule
+
+
+def _regex_match(pattern: Any, text: str) -> bool:
+    pattern_text = _clean_text(pattern, ".*")
+    if not pattern_text or pattern_text == ".*":
+        return True
+    try:
+        return bool(re.search(pattern_text, text, flags=re.IGNORECASE))
+    except re.error:
+        return pattern_text.lower() in text.lower()
+
+
+def rule_matches_asset(rule: dict | pd.Series, asset_state: dict) -> bool:
+    rule_dict = dict(rule)
+    combined = " ".join(
+        _clean_text(asset_state.get(field), "")
+        for field in ["asset_id", "asset_type", "area", "criticality"]
+    )
+    equipment_ok = _regex_match(rule_dict.get("equipment_pattern"), combined)
+    area_ok = _regex_match(rule_dict.get("area_pattern"), combined)
+    return equipment_ok and area_ok
+
+
+def _rule_threshold_check(text: str, label_regex: str, value: float) -> list[bool]:
+    checks: list[bool] = []
+    pattern = rf"\b(?:{label_regex})\b\s*(?:is|are|was|were)?\s*(above|over|greater than|>=|>|at least|below|under|less than|<=|<)\s*(-?\d+(?:\.\d+)?)"
+    for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+        operator = match.group(1).lower()
+        threshold = float(match.group(2))
+        if operator in {"above", "over", "greater than", ">"}:
+            checks.append(value > threshold)
+        elif operator in {">=", "at least"}:
+            checks.append(value >= threshold)
+        elif operator in {"below", "under", "less than", "<"}:
+            checks.append(value < threshold)
+        elif operator == "<=":
+            checks.append(value <= threshold)
+    return checks
+
+
+def rule_condition_met(rule: dict | pd.Series, asset_state: dict) -> bool:
+    text = _clean_text(dict(rule).get("condition_text"), "").lower()
+    temp = _num(asset_state.get("temperature"), -999.0)
+    vib = _num(asset_state.get("vibration"), -999.0)
+    current = _num(asset_state.get("current"), -999.0)
+    pressure = _num(asset_state.get("pressure"), 999.0)
+    alarms = _num(asset_state.get("alarm_count"), 0.0)
+
+    checks: list[bool] = []
+    checks.extend(_rule_threshold_check(text, r"vib(?:ration)?", vib))
+    checks.extend(_rule_threshold_check(text, r"temp(?:erature)?", temp))
+    checks.extend(_rule_threshold_check(text, r"current", current))
+    checks.extend(_rule_threshold_check(text, r"pressure", pressure))
+    checks.extend(_rule_threshold_check(text, r"alarm(?:\s*count)?|alarms?", alarms))
+    if not checks:
+        return bool(_clean_text(dict(rule).get("priority_override"), ""))
+    return all(checks)
+
+
+def apply_dynamic_rules(asset_state: dict, scored: dict) -> dict:
+    final = dict(scored)
+    final["base_priority"] = scored.get("priority")
+    final["base_risk_band"] = scored.get("risk_band")
+    final["base_hybrid_health_score"] = scored.get("hybrid_health_score")
+    applied: list[dict] = []
+    rules = load_dynamic_rules()
+    if rules.empty:
+        final["applied_rules"] = []
+        final["applied_rule_count"] = 0
+        return final
+
+    for _, rule_row in rules.iterrows():
+        rule = rule_row.to_dict()
+        if not bool(rule.get("active", True)):
+            continue
+        if not rule_matches_asset(rule, asset_state):
+            continue
+        if not rule_condition_met(rule, asset_state):
+            continue
+
+        rule_summary = {
+            "rule_id": rule.get("rule_id"),
+            "rule_type": rule.get("rule_type"),
+            "condition_text": rule.get("condition_text"),
+            "priority_override": rule.get("priority_override"),
+            "risk_override": rule.get("risk_override"),
+        }
+        applied.append(rule_summary)
+
+        if rule.get("priority_override") == "P1":
+            final["priority"] = "P1"
+            final["risk_band"] = "CRITICAL"
+            final["urgency"] = "Immediate action"
+            final["hybrid_health_score"] = round(max(_num(final.get("hybrid_health_score"), 0.0), 85.0), 2)
+            final["operational_rule_score"] = round(max(_num(final.get("operational_rule_score"), 0.0), 85.0), 2)
+            final["hybrid_failure_risk"] = round(max(_num(final.get("hybrid_failure_risk"), 0.0), 0.85), 4)
+            final["failure_risk"] = round(max(_num(final.get("failure_risk"), 0.0), 0.85), 4)
+            final["ml_failure_pred"] = 1
+            final["is_anomaly"] = 1
+            final["estimated_rul_days"] = min(_num(final.get("estimated_rul_days"), 50.0), 7.5)
+            final["anomaly_events_24h"] = max(int(_num(final.get("anomaly_events_24h"), 0)), 12)
+        elif rule.get("priority_override") == "P2" and final.get("priority") not in {"P1", "P2"}:
+            final["priority"] = "P2"
+            final["risk_band"] = "HIGH"
+            final["urgency"] = "Action within 24 hours"
+            final["hybrid_health_score"] = round(max(_num(final.get("hybrid_health_score"), 0.0), 58.0), 2)
+            final["operational_rule_score"] = round(max(_num(final.get("operational_rule_score"), 0.0), 58.0), 2)
+            final["hybrid_failure_risk"] = round(max(_num(final.get("hybrid_failure_risk"), 0.0), 0.58), 4)
+
+    final["applied_rules"] = applied
+    final["applied_rule_count"] = len(applied)
+    final["dynamic_rule_note"] = (
+        f"{len(applied)} remembered safety/SOP rule(s) applied to this asset."
+        if applied
+        else ""
+    )
+    return final
 
 
 def score_dynamic_asset(row: pd.Series | dict) -> dict:
@@ -703,7 +1005,7 @@ def score_dynamic_asset(row: pd.Series | dict) -> dict:
     rul = max(1.0, round(50 * (1 - score / 100), 1))
     ml_risk_proxy = round(float(np.clip(0.20 + 0.0065 * score, 0.01, 0.92)), 4)
 
-    return {
+    scored = {
         **r,
         "asset_id": str(r.get("asset_id", "")).upper(),
         "asset_type": asset_type,
@@ -743,6 +1045,7 @@ def score_dynamic_asset(row: pd.Series | dict) -> dict:
         "data_origin": "dynamic_user_memory",
         "is_dynamic": 1,
     }
+    return apply_dynamic_rules({**r, **scored}, scored)
 
 
 def score_dynamic_assets(df: pd.DataFrame | None = None) -> pd.DataFrame:

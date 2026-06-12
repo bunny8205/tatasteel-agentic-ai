@@ -7,6 +7,8 @@ reports/
 artifacts/
 data/dynamic_assets.csv
 data/dynamic_asset_history.csv
+data/dynamic_rules.csv
+data/dynamic_rule_applications.csv
 tatasteel.ipynb
 .ipynb_checkpoints/
 *.zip
